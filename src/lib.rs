@@ -11,6 +11,8 @@ use std::sync::Arc;
 use mime::APPLICATION_OCTET_STREAM;
 use mime_guess;
 
+mod thread_pool;
+
 pub type ServerResult = Result<(), Box<dyn Error>>;
 pub type ServerResultData<T> = Result<T, Box<dyn Error>>;
 
@@ -21,8 +23,8 @@ pub fn run_and_serve(addr: &str, config: Config) -> ServerResult {
         Err(err) => return Err(Box::new(err)),
     };
     let config = Arc::new(config);
-    let finish = false;
-    while !finish {
+    // let pool = sync::ThreadPool::new(5);
+    loop {
         let (stream, src_addr) = match listener.accept() {
             Err(err) => return Err(Box::new(err)),
             Ok(connection) => connection,
@@ -30,15 +32,14 @@ pub fn run_and_serve(addr: &str, config: Config) -> ServerResult {
         println!("\naccepting connection from {}", src_addr);
         let cconfig = config.clone();
         // We are not waiting fot the threads to finish which is dirty.
-        std::thread::spawn(move || match handle_connection(stream, cconfig) {
+        /*pool.exec(move || match handle_connection(stream, cconfig) {
             Err(err) => {
                 println!("error handling request: {}", err);
                 Some(err.to_string())
             }
             _ => None,
-        });
+        });*/
     }
-    Ok(())
 }
 
 fn handle_connection(mut stream: net::TcpStream, config: Arc<Config>) -> ServerResult {
