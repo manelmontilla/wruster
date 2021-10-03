@@ -23,7 +23,7 @@ pub fn run_and_serve(addr: &str, config: Config) -> ServerResult {
         Err(err) => return Err(Box::new(err)),
     };
     let config = Arc::new(config);
-    // let pool = sync::ThreadPool::new(5);
+    let mut pool = thread_pool::Pool::new(5);
     loop {
         let (stream, src_addr) = match listener.accept() {
             Err(err) => return Err(Box::new(err)),
@@ -31,14 +31,14 @@ pub fn run_and_serve(addr: &str, config: Config) -> ServerResult {
         };
         println!("\naccepting connection from {}", src_addr);
         let cconfig = config.clone();
-        // We are not waiting fot the threads to finish which is dirty.
-        /*pool.exec(move || match handle_connection(stream, cconfig) {
+        // We are not waiting for the threads to finish which is dirty.
+        pool.run(move || match handle_connection(stream, cconfig) {
             Err(err) => {
                 println!("error handling request: {}", err);
                 Some(err.to_string())
             }
             _ => None,
-        });*/
+        });
     }
 }
 

@@ -3,14 +3,14 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::thread;
 
-struct Pool {
+pub struct Pool {
     sender: SyncSender<usize>,
     receiver: Receiver<usize>,
     current: Arc<Mutex<usize>>,
 }
 
 impl Pool {
-    fn new(n: usize) -> Pool {
+    pub fn new(n: usize) -> Pool {
         let (send, receive) = sync_channel::<usize>(n);
         for i in 0..n {
             send.send(i).unwrap();
@@ -22,24 +22,26 @@ impl Pool {
         }
     }
 
-    fn run<F>(&mut self, action: F) -> thread::JoinHandle<()>
+    pub fn run<F, T>(&mut self, action: F) -> thread::JoinHandle<T>
     where
-        F: FnOnce(),
+        F: FnOnce() -> T,
         F: Send + 'static,
+        T: Send + 'static,
     {
         let token = self.receiver.recv().unwrap();
         let sender = self.sender.clone();
         let current = Arc::clone(&self.current);
         self.incr_running();
         thread::spawn(move || {
-            action();
+            let ret = action();
             let mut d = current.lock().unwrap();
             *d = *d - 1;
             sender.send(token).unwrap();
+            ret
         })
     }
 
-    fn current(&self) -> usize {
+    pub fn current(&self) -> usize {
         *self.current.lock().unwrap()
     }
 
