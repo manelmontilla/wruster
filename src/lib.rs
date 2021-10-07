@@ -30,14 +30,9 @@ pub fn run_and_serve(addr: &str, config: Config) -> ServerResult {
             Ok(connection) => connection,
         };
         println!("\naccepting connection from {}", src_addr);
-        let cconfig = config.clone();
-        // We are not waiting for the threads to finish which is dirty.
-        pool.run(move || match handle_connection(stream, cconfig) {
-            Err(err) => {
-                println!("error handling request: {}", err);
-                Some(err.to_string())
-            }
-            _ => None,
+        let cconfig = Arc::clone(&config);
+        pool.run(move || {
+            let res = handle_connection(stream, cconfig);
         });
     }
 }

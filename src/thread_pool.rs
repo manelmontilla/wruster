@@ -1,54 +1,91 @@
-use std::sync::mpsc::{sync_channel, Receiver, SyncSender};
+use std::sync::mpsc::{channel, sync_channel, Receiver, Sender, SyncSender};
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::thread;
 
-pub struct Pool {
-    sender: SyncSender<usize>,
-    receiver: Receiver<usize>,
-    current: Arc<Mutex<usize>>,
+struct Worker<F>
+where
+    F: FnOnce(),
+    F: Send + 'static,
+{
+    handle: Option<thread::JoinHandle<()>>,
+    sender: Option<Sender<F>>,
 }
 
-impl Pool {
-    pub fn new(n: usize) -> Pool {
-        let (send, receive) = sync_channel::<usize>(n);
-        for i in 0..n {
-            send.send(i).unwrap();
+impl<F> Worker<F>
+where
+    F: FnOnce(),
+    F: Send + 'static,
+{
+    fn new() -> Worker<F> {
+        let (sender, receiver) = channel::<F>();
+        let handle = std::thread::spawn(move || loop {
+            let res = receiver.recv();
+            if let Ok(action) = res {
+                action();
+                continue;
+            }
+            break;
+        });
+        Worker {
+            handle: Some(handle),
+            sender: Some(sender),
+        }
+    }
+
+    fn exec(&self, action: F) {
+        if let Some(sender) = &self.sender {
+            sender.send(action).unwrap();
+        }
+    }
+}
+
+impl<F: FnOnce() -> () + Send + 'static> Drop for Worker<F> {
+    fn drop(&mut self) {
+        drop(self.sender.take());
+        println!("sender dropped");
+        let handle = self.handle.take().unwrap();
+        handle.join().unwrap();
+    }
+}
+
+pub struct Pool<F>
+where
+    F: FnOnce(),
+    F: Send + 'static,
+{
+    next: usize,
+    workers: Arc<Mutex<Vec<Worker<F>>>>,
+}
+
+impl<F> Pool<F>
+where
+    F: FnOnce(),
+    F: Send + 'static,
+{
+    pub fn new(n: usize) -> Pool<F> {
+        let mut workers = Vec::with_capacity(n);
+        for _ in 0..n {
+            workers.push(Worker::new());
         }
         Pool {
-            sender: send,
-            current: Arc::new(Mutex::new(0)),
-            receiver: receive,
+            next: 0,
+            workers: Arc::new(Mutex::new(workers)),
         }
     }
 
-    pub fn run<F, T>(&mut self, action: F) -> thread::JoinHandle<T>
-    where
-        F: FnOnce() -> T,
-        F: Send + 'static,
-        T: Send + 'static,
-    {
-        let token = self.receiver.recv().unwrap();
-        let sender = self.sender.clone();
-        let current = Arc::clone(&self.current);
-        self.incr_running();
-        thread::spawn(move || {
-            let ret = action();
-            let mut d = current.lock().unwrap();
-            *d = *d - 1;
-            sender.send(token).unwrap();
-            ret
-        })
+    pub fn run(&mut self, action: F) {
+        self.workers.lock().unwrap()[0].exec(action);
     }
+}
 
-    pub fn current(&self) -> usize {
-        *self.current.lock().unwrap()
-    }
-
-    fn incr_running(&self) {
-        let current = Arc::clone(&self.current);
-        let mut d = current.lock().unwrap();
-        *d = *d + 1;
+impl<F: FnOnce() -> () + Send + 'static> Drop for Pool<F> {
+    fn drop(&mut self) {
+        let workers = self.workers.lock().unwrap();
+        for worker in &*workers {
+            println!("dropping worker");
+            drop(worker);
+        }
     }
 }
 
@@ -65,36 +102,28 @@ mod tests {
             let mut str_result = action_result.lock().unwrap();
             *str_result = String::from("done");
         });
-        handler.join().unwrap();
+        // Droping the pool forces to be sure the action send to the pool is
+        // already done.
+        drop(pool);
         let result = &*result.lock().unwrap();
         assert_eq!(result, "done");
     }
-
     #[test]
-    fn runs_n_actions() {
-        let mut pool = Pool::new(2);
-        let result = Arc::new(Mutex::new(0));
+    fn test_receiver() {
+        let (sender, receiver) = channel::<String>();
+        let handle = std::thread::spawn(move || loop {
+            println!("reasding action");
+            let res = receiver.recv();
+            match res {
+                Err(err) => {
+                    println!("error {:?}", err);
+                    break;
+                }
 
-        let action_result = Arc::clone(&result);
-        let hold_result = result.lock().unwrap();
-
-        let handler1 = pool.run(move || {
-            let mut d = action_result.lock().unwrap();
-            *d = *d + 1;
+                Ok(s) => println!("value {}", s),
+            }
         });
-
-        let action_result2 = Arc::clone(&result);
-        let handler2 = pool.run(move || {
-            let mut d = action_result2.lock().unwrap();
-            *d = *d + 1;
-        });
-
-        let n = pool.current();
-        assert_eq!(n, 2);
-        drop(hold_result);
-        handler2.join().unwrap();
-        handler1.join().unwrap();
-        let d = *result.lock().unwrap();
-        assert_eq!(d, 2);
+        drop(&sender);
+        handle.join().unwrap();
     }
 }
