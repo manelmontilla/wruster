@@ -98,7 +98,7 @@ mod tests {
         let mut pool = Pool::new(1);
         let result = Arc::new(Mutex::new(String::new()));
         let action_result = Arc::clone(&result);
-        let handler = pool.run(move || {
+        pool.run(move || {
             let mut str_result = action_result.lock().unwrap();
             *str_result = String::from("done");
         });
@@ -107,23 +107,5 @@ mod tests {
         drop(pool);
         let result = &*result.lock().unwrap();
         assert_eq!(result, "done");
-    }
-    #[test]
-    fn test_receiver() {
-        let (sender, receiver) = channel::<String>();
-        let handle = std::thread::spawn(move || loop {
-            println!("reasding action");
-            let res = receiver.recv();
-            match res {
-                Err(err) => {
-                    println!("error {:?}", err);
-                    break;
-                }
-
-                Ok(s) => println!("value {}", s),
-            }
-        });
-        drop(&sender);
-        handle.join().unwrap();
     }
 }
