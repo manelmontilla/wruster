@@ -8,6 +8,10 @@ use mime::APPLICATION_OCTET_STREAM;
 pub mod http;
 pub mod routes;
 mod thread_pool;
+mod trie;
+
+#[cfg(test)]
+mod tests;
 
 use http::*;
 use routes::Routes;
