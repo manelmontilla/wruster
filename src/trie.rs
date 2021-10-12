@@ -4,22 +4,22 @@ use std::cell::RefCell;
 use std::rc;
 use std::rc::Rc;
 
-struct Trie<T> {
+pub struct Trie<T> {
     children: Vec<Option<Node<T>>>,
 }
 
 impl<T> Trie<T> {
-    fn new() -> Self {
+    pub fn new() -> Self {
         let children = Node::empty_children();
         Trie { children: children }
     }
 
-    fn add_value(&mut self, key: &[u8], value: T) {
+    pub fn add_value(&mut self, key: &[u8], value: T) {
         assert!(key.len() > 0);
         Node::add_value_to_children(&mut self.children, key, value);
     }
 
-    fn get_value(&self, index: &[u8]) -> Option<&T> {
+    pub fn get_value(&self, index: &[u8]) -> Option<&T> {
         if index.len() == 0 {
             return None;
         }

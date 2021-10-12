@@ -4,17 +4,18 @@ use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::path;
 use std::path::Component;
+use crate::trie::Trie;
 
 type Action = Box<dyn Fn(Request) -> Response + Send + Sync>;
 
 pub struct Routes {
-    routes: AtomicRefCell<HashMap<Route, Action>>,
+    routes: AtomicRefCell<Trie<Action>>,
 }
 
 impl Routes {
     pub fn new() -> Routes {
         Routes {
-            routes: AtomicRefCell::new(HashMap::new()),
+            routes: AtomicRefCell::new(Trie::new()),
         }
     }
 
