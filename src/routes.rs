@@ -61,10 +61,7 @@ impl Hash for HttpMethod {
 }
 
 pub fn static_action(dir: String) -> impl Fn(Request) -> Response {
-    move |req: Request| {
-        let dir = &dir;
-        Response::from_status(StatusCode::Ok)
-    }
+    |req: Request| Response::from_status(StatusCode::Ok)
 }
 
 pub trait Normalize
