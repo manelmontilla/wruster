@@ -93,16 +93,25 @@ impl<T> Node<T> {
 mod tests {
     use super::*;
 
-    struct Elem {
-        pub path: String,
-        pub method: Option<usize>,
-    }
-
     #[test]
     fn adds_node() {
         let mut root = Node::<&str>::new();
         let index = "/a/b/c".as_bytes();
         root.add_value(index, "a");
         println!("value {:?}", root.get_value("/a".as_bytes()));
+    }
+
+    #[test]
+    fn trie_add_key_and_values() {
+        let mut root = Trie::<Box<dyn Fn(String)->String>>::new();
+        let key = "/a/b/c".as_bytes();
+        let action = |param| {
+           println!("action executed with param {}",param);
+           String::from(param)
+        };
+        root.add_value(key, Box::new(action));
+        let action = root.get_value(key);
+        let resp = action.unwrap()(String::from("value passed"));
+        assert_eq!(resp,"value passed");
     }
 }
