@@ -1,9 +1,12 @@
 use crate::http::*;
 use crate::routes::*;
-use std::io::BufReader;
-use std::path::PathBuf;
+use crate::trie::*;
 
-const request: &str = "GET / HTTP/1.1\r\nHost: ww.google.es\r\n\r\n";
+use std::collections::HashMap;
+use std::path::PathBuf;
+use std::str::FromStr;
+
+const REQUEST: &str = "GET / HTTP/1.1\r\nHost: example.com\r\n\r\n";
 
 #[test]
 fn runs_an_action() {
@@ -13,9 +16,8 @@ fn runs_an_action() {
     };
     let dir = String::from("/a/b");
     let action = static_action(dir);
-    println!("request {}", request);
-    let mut reader = BufReader::new(request.as_bytes());
-    let req = Request::from(&mut reader).unwrap();
+    println!("request {}", REQUEST);
+    let req = Request::from_str(REQUEST).unwrap();
     let response = action(req);
     println!("{:?}", response);
 }
@@ -39,8 +41,67 @@ fn normalizes_path() {
     let res: PathBuf = [r"/b"].iter().collect();
     assert_eq!(Ok(res), p.normalize());
 
-    // Removes and ending separator.
+    // Removes an ending separator.
     let p = PathBuf::from("/a/");
     let res: PathBuf = [r"/a"].iter().collect();
     assert_eq!(Ok(res), p.normalize());
 }
+
+#[test]
+fn routes_add_and_get() {
+    let routes = Routes::new();
+    let action = Box::new(|req: Request| {
+        let content = String::from_utf8_lossy(&req.content);
+        Response::from_str(&content).unwrap()
+    });
+    routes.add(String::from("/a/b"), HttpMethod::GET, action);
+    let action = routes.get(String::from("/a/b"), HttpMethod::GET);
+    let action = action.unwrap();
+    let request = Request {
+        content: Vec::from("content"),
+        method: HttpMethod::POST,
+        uri: String::from("/"),
+        version: String::from("HTTP/1.1"),
+        headers: HashMap::new(),
+    };
+    let resp = action(request);
+    let resp_body = resp.body.unwrap();
+    assert_eq!(Vec::from("content"), resp_body.content);
+}
+
+
+ #[test]
+    fn trie_add_key_and_values() {
+        let mut root = Trie::<Box<dyn Fn(String) -> String>>::new();
+        let key = "/a/b/c".as_bytes();
+        let action = |param| {
+            println!("action executed with param {}", param);
+            String::from(param)
+        };
+        root.add_value(key, Box::new(action));
+        let action = root.get_value(key);
+        let resp = action.unwrap()(String::from("value passed"));
+        assert_eq!(resp, "value passed");
+    }
+
+    #[test]
+    fn trie_find_prefix() {
+        let mut root = Trie::<String>::new();
+
+        let mut key = "/a/b/c/d".as_bytes();
+        let mut value = String::from("action for route /a/b/c/d");
+        root.add_value(key, value);
+
+        key = "/a/b".as_bytes();
+        value = String::from("action for route /a/b");
+        root.add_value(key, value);
+
+        let value = root.get_value_prefix("/d".as_bytes());
+        assert!(value.is_none());
+
+        let value = root.get_value_prefix("/a/b/c".as_bytes());
+        assert_eq!(value.unwrap(), "action for route /a/b");
+
+        let value = root.get_value_prefix("/a/b/c/d".as_bytes());
+        assert_eq!(value.unwrap(), "action for route /a/b/c/d");
+    }

@@ -1,12 +1,14 @@
 use std::collections::hash_map::HashMap;
+use std::convert::Infallible;
 use std::error::Error;
 use std::fmt;
 use std::fs;
 use std::io;
 use std::io::prelude::*;
-use std::net;
+use std::io::BufReader;
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::str::FromStr;
+use std::string::ParseError;
 
 pub type ServerResult = Result<(), Box<dyn Error>>;
 pub type ServerResultData<T> = Result<T, Box<dyn Error>>;
@@ -111,6 +113,23 @@ impl Response {
     }
 }
 
+impl FromStr for Response {
+    type Err = ParseError;
+    fn from_str(content: &str) -> Result<Response, Infallible> {
+        let content = String::from(content);
+        let content = Vec::from(content);
+        let resp = Response {
+            status: StatusCode::Ok,
+            headers: HashMap::new(),
+            body: Some(Body {
+                content_type: mime::TEXT_PLAIN,
+                content: content,
+            }),
+        };
+        Ok(resp)
+    }
+}
+
 #[derive(Debug)]
 pub enum StatusCode {
     Ok,
@@ -143,11 +162,11 @@ impl Error for ParseRequestError {}
 
 #[derive(Debug)]
 pub struct Request {
-    method: String,
-    uri: String,
-    version: String,
-    headers: HashMap<String, String>,
-    content: Vec<u8>,
+    pub method: HttpMethod,
+    pub uri: String,
+    pub version: String,
+    pub headers: HashMap<String, String>,
+    pub content: Vec<u8>,
 }
 
 impl Request {
@@ -162,6 +181,11 @@ impl Request {
         Ok(request)
     }
 
+    pub fn from_str(from: &str) -> Result<Request, ParseRequestError> {
+        let mut reader = BufReader::new(from.as_bytes());
+        Request::from(&mut reader)
+    }
+
     fn read_request_line<T: io::Read>(
         from: &mut io::BufReader<T>,
     ) -> Result<Request, ParseRequestError> {
@@ -169,7 +193,7 @@ impl Request {
         // https://www.w3.org/Protocols/rfc2616/rfc2616-sec5.html
 
         // Parsing the request line this way is not fast, but the objective is
-        // to make it cleat not performant.
+        // to make it clear not performant.
         let mut method = Vec::new();
         if let Err(err) = from.read_until(' ' as u8, &mut method) {
             return Err(ParseRequestError {
@@ -182,6 +206,13 @@ impl Request {
             });
         };
         let method = String::from_utf8_lossy(&method[..method.len() - 1]);
+        let method = match HttpMethod::from_str(&method) {
+            Err(err) => return Err(ParseRequestError {
+                msg: err,
+            }),
+            Ok(method) => method
+        };
+
 
         let mut uri = Vec::new();
         if let Err(err) = from.read_until(' ' as u8, &mut uri) {
@@ -220,7 +251,7 @@ impl Request {
         let version = String::from_utf8_lossy(&version[..version.len() - 2]);
 
         Ok(Request {
-            method: String::from(method),
+            method: method,
             uri: String::from(uri),
             version: String::from(version),
             headers: HashMap::new(),
@@ -229,38 +260,64 @@ impl Request {
     }
 }
 
-trait IsParent {
-    fn is_parent(&self, child: &std::path::Path) -> bool;
+#[derive(Debug, Copy, Clone)]
+#[repr(u16)]
+pub enum HttpMethod {
+    GET = 0,
+    HEAD,
+    POST,
+    PUT,
+    DELETE,
+    CONNECT,
+    OPTIONS,
+    TRACE,
+    PATCH,
 }
 
-impl IsParent for std::path::Path {
-    fn is_parent(&self, child: &std::path::Path) -> bool {
-        let parent = self.canonicalize().unwrap();
-        let parent = parent.to_str().unwrap();
-        let child = self.canonicalize().unwrap();
-        let child = child.to_str().unwrap();
-        child.starts_with(parent)
-        // let parent_components = parent.components();
-        // let parent_name = parent.file_stem().unwrap();
+impl HttpMethod {
+    pub fn get_last() -> HttpMethod {
+        Self::PATCH
+    }
+}
 
-        // let exit = false;
-        // let parent_primma: Option<&std::path::Path> = None;
-        // loop {
-        //     child = match child.parent() {
-        //        None => break,
-        //        Some(c) => c,
-        //     };
-        //     if child.file_stem().unwrap() == parent_name {
-        //         parent_primma = Some(child);
-        //         break;
-        //     }
-        // };
+impl PartialEq for HttpMethod {
+    fn eq(&self, other: &Self) -> bool {
+        self == other
+    }
+}
+impl Eq for HttpMethod {}
 
-        // let parent_primma = match parent_primma {
-        //       None => return false,
-        //       Some(p) => p,
-        // };
+impl FromStr for HttpMethod {
+    type Err = String;
 
-        // parent_primma == parent
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "GET" => Ok(HttpMethod::GET),
+            "HEAD" => Ok(HttpMethod::HEAD),
+            "POST" => Ok(HttpMethod::POST),
+            "PUT" => Ok(HttpMethod::PUT),
+            "DELETE" => Ok(HttpMethod::DELETE),
+            "CONNECT" => Ok(HttpMethod::CONNECT),
+            "OPTIONS" => Ok(HttpMethod::OPTIONS),
+            "TRACE" => Ok(HttpMethod::TRACE),
+            "PATCH" => Ok(HttpMethod::PATCH),
+            _ => Err(String::from("invalid http method")),
+        }
+    }
+}
+
+impl fmt::Display for HttpMethod {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            &HttpMethod::CONNECT => write!(f, "CONNECT"),
+            &HttpMethod::DELETE => write!(f, "DELETE"),
+            &HttpMethod::GET => write!(f, "GET"),
+            &HttpMethod::HEAD => write!(f, "HEAD"),
+            &HttpMethod::OPTIONS => write!(f, "OPTIONS"),
+            &HttpMethod::PATCH => write!(f, "PATCH"),
+            &HttpMethod::POST => write!(f, "POST"),
+            &HttpMethod::PUT => write!(f, "PUT"),
+            &HttpMethod::TRACE => write!(f, "TRACE"),
+        }
     }
 }

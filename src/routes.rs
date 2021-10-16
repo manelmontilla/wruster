@@ -1,15 +1,15 @@
-use crate::{Request, Response, StatusCode};
 use atomic_refcell::AtomicRefCell;
-use std::collections::HashMap;
-use std::hash::{Hash, Hasher};
 use std::path;
 use std::path::Component;
+use std::sync::Arc;
+
 use crate::trie::Trie;
+use crate::{Request, Response, StatusCode, HttpMethod};
 
 type Action = Box<dyn Fn(Request) -> Response + Send + Sync>;
 
 pub struct Routes {
-    routes: AtomicRefCell<Trie<Action>>,
+    routes: AtomicRefCell<Trie<MethodActions>>,
 }
 
 impl Routes {
@@ -19,47 +19,66 @@ impl Routes {
         }
     }
 
-    pub fn add(&self, route: Route, action: Action) {
-        self.routes.borrow_mut().insert(route, action);
+    pub fn add(&self, route: String, method: HttpMethod, action: Action) {
+        // We priorize keeping the code of the Trie simpler over adding the
+        // routes faster.
+        let mut routes = self.routes.borrow_mut();
+        let route_actions = match routes.move_value_out(route.as_bytes()) {
+            None => MethodActions::new(),
+            Some(route_actions) => route_actions,
+        };
+        route_actions.actions.borrow_mut()[method as usize] = Some(Arc::new(action));
+        routes.add_value(&route.as_bytes(), route_actions);
     }
 
-    // pub fn action_for_path(path: String) -> Action {
-    //     let path = path::PathBuf::from(path);
-    //     let path = path.normalize();
-    // }
+    pub fn get(&self, route: String, method: HttpMethod) -> Option<Arc<Action>> {
+        let routes = self.routes.borrow();
+        let method_actions = match routes.get_value(route.as_bytes()) {
+            None => return None,
+            Some(actions) => actions,
+        };
+        method_actions.get_action(method)
+    }
+
+    pub fn get_prefix(&self, route: String, method: HttpMethod) -> Option<Arc<Action>> {
+        let routes = self.routes.borrow();
+        let method_actions = match routes.get_value_prefix(route.as_bytes()) {
+            None => return None,
+            Some(actions) => actions,
+        };
+        method_actions.get_action(method)
+    }
 }
 
-#[derive(Debug, PartialEq, Eq, Hash)]
-pub struct Route {
-    pub path: String,
+pub struct MethodActions {
+    actions: AtomicRefCell<Vec<Option<Arc<Action>>>>,
+}
+
+impl MethodActions {
+    fn new() -> MethodActions {
+        let mut actions = Vec::<Option<Arc<Action>>>::new();
+        for i in 0..HttpMethod::get_last() as usize + 1 {
+            actions.push(None);
+        }
+        MethodActions {
+            actions: AtomicRefCell::new(actions),
+        }
+    }
+
+    fn get_action(&self, method: HttpMethod) -> Option<Arc<Action>> {
+        let actions = self.actions.borrow();
+        match &actions[method as usize] {
+            None => None,
+            Some(action) => Some(Arc::clone(action)),
+        }
+    }
+}
+
+pub struct RouteAction {
     pub method: HttpMethod,
+    pub action: Action,
 }
 
-#[derive(Debug)]
-pub enum HttpMethod {
-    GET,
-    HEAD,
-    POST,
-    PUT,
-    DELETE,
-    CONNECT,
-    OPTIONS,
-    TRACE,
-    PATCH,
-}
-
-impl PartialEq for HttpMethod {
-    fn eq(&self, other: &Self) -> bool {
-        self == other
-    }
-}
-impl Eq for HttpMethod {}
-
-impl Hash for HttpMethod {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.hash(state);
-    }
-}
 
 pub fn static_action(dir: String) -> impl Fn(Request) -> Response {
     |req: Request| Response::from_status(StatusCode::Ok)

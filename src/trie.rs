@@ -1,8 +1,3 @@
-// type Children<'a, T> =  [Option<T>; 256];
-
-use std::cell::RefCell;
-use std::rc;
-use std::rc::Rc;
 
 pub struct Trie<T> {
     children: Vec<Option<Node<T>>>,
@@ -19,18 +14,45 @@ impl<T> Trie<T> {
         Node::add_value_to_children(&mut self.children, key, value);
     }
 
-    pub fn get_value(&self, index: &[u8]) -> Option<&T> {
-        if index.len() == 0 {
+    pub fn get_value(&self, key: &[u8]) -> Option<&T> {
+        if key.len() == 0 {
             return None;
         }
-        let pos = index[0] as usize;
+        let pos = key[0] as usize;
         let children = &self.children;
         let child = match &children[pos] {
             None => return None,
             Some(node) => node,
         };
-        child.get_value(&index[1..])
+        child.get_value(&key[1..])
     }
+
+    pub fn move_value_out(&mut self, key: &[u8]) -> Option<T> {
+        if key.len() == 0 {
+            return None;
+        }
+        let pos = key[0] as usize;
+        let children = &mut self.children;
+        let child = match &mut children[pos] {
+            None => return None,
+            Some(node) => node,
+        };
+        child.move_value_out(&key[1..])
+    }
+
+    pub fn get_value_prefix<'a>(&'a self, key: &[u8]) -> Option<&T> {
+        if key.len() == 0 {
+           return None
+        }
+        let pos = key[0] as usize;
+        let children = &self.children;
+        let child = match &children[pos] {
+            None => return None,
+            Some(node) => node,
+        };
+        child.get_value_prefix(&key[1..], None)
+    }
+
 }
 
 #[derive(Debug)]
@@ -75,17 +97,50 @@ impl<T> Node<T> {
         Self::add_value_to_children(&mut self.children, key, value);
     }
 
-    fn get_value(&self, index: &[u8]) -> Option<&T> {
-        if index.len() == 0 {
+    fn get_value(&self, key: &[u8]) -> Option<&T> {
+        if key.len() == 0 {
             return self.value.as_ref();
         }
-        let pos = index[0] as usize;
+        let pos = key[0] as usize;
         let children = &self.children;
         let child = match &children[pos] {
             None => return None,
             Some(node) => node,
         };
-        child.get_value(&index[1..])
+        child.get_value(&key[1..])
+    }
+    
+    fn get_value_prefix<'a>(&'a self, key: &[u8], prefix_value: Option<&'a T>) -> Option<&T> {
+        if key.len() == 0 {
+            if let None = self.value {
+                return prefix_value;
+            }
+            return self.value.as_ref();
+        }
+        let pos = key[0] as usize;
+        let children = &self.children;
+        let child = match &children[pos] {
+            None => return None,
+            Some(node) => node,
+        };
+        let next_parent = match &self.value {
+            None => prefix_value,
+            Some(value) => Some(value)
+        };
+        child.get_value_prefix(&key[1..],next_parent)
+    }
+
+    pub fn move_value_out(&mut self, key: &[u8]) -> Option<T> {
+        if key.len() == 0 {
+            return self.value.take();
+        }
+        let pos = key[0] as usize;
+        let children = &mut self.children;
+        let child = match &mut children[pos] {
+            None => return None,
+            Some(node) => node,
+        };
+        child.move_value_out(&key[1..])
     }
 }
 
@@ -101,17 +156,4 @@ mod tests {
         println!("value {:?}", root.get_value("/a".as_bytes()));
     }
 
-    #[test]
-    fn trie_add_key_and_values() {
-        let mut root = Trie::<Box<dyn Fn(String)->String>>::new();
-        let key = "/a/b/c".as_bytes();
-        let action = |param| {
-           println!("action executed with param {}",param);
-           String::from(param)
-        };
-        root.add_value(key, Box::new(action));
-        let action = root.get_value(key);
-        let resp = action.unwrap()(String::from("value passed"));
-        assert_eq!(resp,"value passed");
-    }
 }
