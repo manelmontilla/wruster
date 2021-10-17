@@ -1,3 +1,4 @@
+#[derive(Debug)]
 pub struct Trie<T> {
     children: Vec<Option<Node<T>>>,
 }
@@ -118,7 +119,12 @@ impl<T> Node<T> {
         let pos = key[0] as usize;
         let children = &self.children;
         let child = match &children[pos] {
-            None => return None,
+            None => {
+                if let Some(_) = self.value {
+                    return self.value.as_ref();
+                }
+                return prefix_value;
+            }
             Some(node) => node,
         };
         let next_parent = match &self.value {

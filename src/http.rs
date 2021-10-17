@@ -2,11 +2,9 @@ use std::collections::hash_map::HashMap;
 use std::convert::Infallible;
 use std::error::Error;
 use std::fmt;
-use std::fs;
 use std::io;
 use std::io::prelude::*;
 use std::io::BufReader;
-use std::path::PathBuf;
 use std::str::FromStr;
 use std::string::ParseError;
 
@@ -67,41 +65,6 @@ impl Response {
         };
         let body = self.body.as_ref().unwrap();
         body.write(to)
-    }
-
-    fn from_static_content(dir: &str, request: &Request) -> ServerResultData<Response> {
-        let base_path: PathBuf = PathBuf::from(dir).canonicalize().unwrap();
-        let mut uri = request.uri.as_str();
-        if uri.starts_with('/') {
-            if uri.len() < 2 {
-                println!("error reading file {:?}, error file not found", dir);
-                return Ok(Response::from_status(StatusCode::NotFound));
-            }
-            uri = &uri[1..]
-        }
-        let mut path = base_path.clone();
-        path.push(uri);
-        let path = path.canonicalize().unwrap();
-        let content = match fs::read(&path) {
-            Ok(content) => content,
-            Err(err) => {
-                if let io::ErrorKind::NotFound = err.kind() {
-                    return Ok(Response::from_status(StatusCode::NotFound));
-                }
-                println!("reading file {:?}, error {:?}", dir, err);
-                return Ok(Response::from_status(StatusCode::InternalServerError));
-            }
-        };
-        let mime_type = mime_guess::from_path(path).first_or_octet_stream();
-        let resp = Response {
-            status: StatusCode::Ok,
-            headers: HashMap::new(),
-            body: Some(Body {
-                content_type: mime_type,
-                content: content,
-            }),
-        };
-        Ok(resp)
     }
 
     pub fn from_status(status: StatusCode) -> Response {

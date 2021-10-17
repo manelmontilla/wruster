@@ -4,7 +4,7 @@ use std::path::Component;
 use std::sync::Arc;
 
 use crate::trie::Trie;
-use crate::{HttpMethod, Request, Response, StatusCode};
+use crate::{HttpMethod, Request, Response};
 
 type Action = Box<dyn Fn(Request) -> Response + Send + Sync>;
 
@@ -57,7 +57,7 @@ pub struct MethodActions {
 impl MethodActions {
     fn new() -> MethodActions {
         let mut actions = Vec::<Option<Arc<Action>>>::new();
-        for i in 0..HttpMethod::get_last() as usize + 1 {
+        for _ in 0..HttpMethod::get_last() as usize + 1 {
             actions.push(None);
         }
         MethodActions {
@@ -77,10 +77,6 @@ impl MethodActions {
 pub struct RouteAction {
     pub method: HttpMethod,
     pub action: Action,
-}
-
-pub fn static_action(dir: String) -> impl Fn(Request) -> Response {
-    |req: Request| Response::from_status(StatusCode::Ok)
 }
 
 pub trait Normalize
