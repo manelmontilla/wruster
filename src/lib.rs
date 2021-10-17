@@ -31,9 +31,10 @@ pub fn run_and_serve<T>(addr: &str, routes: Routes) -> ServerResult {
         };
         println!("\naccepting connection from {}", src_addr);
         let cconfig = Arc::clone(&config);
-        pool.run(move || {
+        let action = move || {
             let res = handle_connection(stream, cconfig);
-        });
+        };
+        pool.run(Box::new(action));
     }
 }
 

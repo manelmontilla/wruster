@@ -1,4 +1,3 @@
-
 pub struct Trie<T> {
     children: Vec<Option<Node<T>>>,
 }
@@ -42,7 +41,7 @@ impl<T> Trie<T> {
 
     pub fn get_value_prefix<'a>(&'a self, key: &[u8]) -> Option<&T> {
         if key.len() == 0 {
-           return None
+            return None;
         }
         let pos = key[0] as usize;
         let children = &self.children;
@@ -52,7 +51,6 @@ impl<T> Trie<T> {
         };
         child.get_value_prefix(&key[1..], None)
     }
-
 }
 
 #[derive(Debug)]
@@ -64,7 +62,7 @@ struct Node<T> {
 impl<T> Node<T> {
     fn empty_children() -> Vec<Option<Node<T>>> {
         let mut children = Vec::new();
-        for i in 0..256 {
+        for _ in 0..256 {
             children.push(None);
         }
         children
@@ -109,7 +107,7 @@ impl<T> Node<T> {
         };
         child.get_value(&key[1..])
     }
-    
+
     fn get_value_prefix<'a>(&'a self, key: &[u8], prefix_value: Option<&'a T>) -> Option<&T> {
         if key.len() == 0 {
             if let None = self.value {
@@ -125,9 +123,9 @@ impl<T> Node<T> {
         };
         let next_parent = match &self.value {
             None => prefix_value,
-            Some(value) => Some(value)
+            Some(value) => Some(value),
         };
-        child.get_value_prefix(&key[1..],next_parent)
+        child.get_value_prefix(&key[1..], next_parent)
     }
 
     pub fn move_value_out(&mut self, key: &[u8]) -> Option<T> {
@@ -155,5 +153,4 @@ mod tests {
         root.add_value(index, "a");
         println!("value {:?}", root.get_value("/a".as_bytes()));
     }
-
 }

@@ -70,7 +70,7 @@ impl Response {
     }
 
     fn from_static_content(dir: &str, request: &Request) -> ServerResultData<Response> {
-        let mut base_path: PathBuf = PathBuf::from(dir).canonicalize().unwrap();
+        let base_path: PathBuf = PathBuf::from(dir).canonicalize().unwrap();
         let mut uri = request.uri.as_str();
         if uri.starts_with('/') {
             if uri.len() < 2 {
@@ -207,12 +207,9 @@ impl Request {
         };
         let method = String::from_utf8_lossy(&method[..method.len() - 1]);
         let method = match HttpMethod::from_str(&method) {
-            Err(err) => return Err(ParseRequestError {
-                msg: err,
-            }),
-            Ok(method) => method
+            Err(err) => return Err(ParseRequestError { msg: err }),
+            Ok(method) => method,
         };
-
 
         let mut uri = Vec::new();
         if let Err(err) = from.read_until(' ' as u8, &mut uri) {

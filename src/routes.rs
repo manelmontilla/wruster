@@ -4,7 +4,7 @@ use std::path::Component;
 use std::sync::Arc;
 
 use crate::trie::Trie;
-use crate::{Request, Response, StatusCode, HttpMethod};
+use crate::{HttpMethod, Request, Response, StatusCode};
 
 type Action = Box<dyn Fn(Request) -> Response + Send + Sync>;
 
@@ -78,7 +78,6 @@ pub struct RouteAction {
     pub method: HttpMethod,
     pub action: Action,
 }
-
 
 pub fn static_action(dir: String) -> impl Fn(Request) -> Response {
     |req: Request| Response::from_status(StatusCode::Ok)

@@ -1,24 +1,16 @@
-use std::sync::mpsc::{channel, sync_channel, Receiver, Sender, SyncSender};
-use std::sync::Arc;
-use std::sync::Mutex;
+use std::sync::mpsc::{channel, Sender};
 use std::thread;
 
-struct Worker<F>
-where
-    F: FnOnce(),
-    F: Send + 'static,
-{
+type Action = Box<dyn FnOnce() -> () + Send>;
+
+struct Worker {
     handle: Option<thread::JoinHandle<()>>,
-    sender: Option<Sender<F>>,
+    sender: Option<Sender<Action>>,
 }
 
-impl<F> Worker<F>
-where
-    F: FnOnce(),
-    F: Send + 'static,
-{
-    fn new() -> Worker<F> {
-        let (sender, receiver) = channel::<F>();
+impl Worker {
+    fn new() -> Worker {
+        let (sender, receiver) = channel::<Action>();
         let handle = std::thread::spawn(move || loop {
             let res = receiver.recv();
             if let Ok(action) = res {
@@ -33,57 +25,50 @@ where
         }
     }
 
-    fn exec(&self, action: F) {
+    fn exec(&self, action: Action) {
         if let Some(sender) = &self.sender {
             sender.send(action).unwrap();
         }
     }
 }
 
-impl<F: FnOnce() -> () + Send + 'static> Drop for Worker<F> {
+impl Drop for Worker {
     fn drop(&mut self) {
         drop(self.sender.take());
-        println!("sender dropped");
         let handle = self.handle.take().unwrap();
         handle.join().unwrap();
     }
 }
 
-pub struct Pool<F>
-where
-    F: FnOnce(),
-    F: Send + 'static,
-{
+pub struct Pool {
+    size: usize,
     next: usize,
-    workers: Arc<Mutex<Vec<Worker<F>>>>,
+    workers: Vec<Worker>,
 }
 
-impl<F> Pool<F>
-where
-    F: FnOnce(),
-    F: Send + 'static,
-{
-    pub fn new(n: usize) -> Pool<F> {
+impl Pool {
+    pub fn new(n: usize) -> Pool {
         let mut workers = Vec::with_capacity(n);
         for _ in 0..n {
             workers.push(Worker::new());
         }
         Pool {
+            size: n,
             next: 0,
-            workers: Arc::new(Mutex::new(workers)),
+            workers: workers,
         }
     }
 
-    pub fn run(&mut self, action: F) {
-        self.workers.lock().unwrap()[0].exec(action);
+    pub fn run(&mut self, action: Action) {
+        self.workers[self.next].exec(action);
+        self.next = self.size % self.size;
     }
 }
 
-impl<F: FnOnce() -> () + Send + 'static> Drop for Pool<F> {
+impl Drop for Pool {
     fn drop(&mut self) {
-        let workers = self.workers.lock().unwrap();
+        let workers = &self.workers;
         for worker in &*workers {
-            println!("dropping worker");
             drop(worker);
         }
     }
@@ -92,20 +77,53 @@ impl<F: FnOnce() -> () + Send + 'static> Drop for Pool<F> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Arc;
+    use std::sync::Mutex;
 
     #[test]
     fn runs_an_action() {
         let mut pool = Pool::new(1);
         let result = Arc::new(Mutex::new(String::new()));
         let action_result = Arc::clone(&result);
-        pool.run(move || {
+        let action = move || {
             let mut str_result = action_result.lock().unwrap();
             *str_result = String::from("done");
-        });
+        };
+        pool.run(Box::new(action));
         // Droping the pool forces to be sure the action send to the pool is
         // already done.
         drop(pool);
         let result = &*result.lock().unwrap();
         assert_eq!(result, "done");
     }
+
+    #[test]
+    fn runs_multiple_actions() {
+        let mut pool = Pool::new(2);
+        let result = Arc::new(Mutex::new(String::new()));
+        let action_result = Arc::clone(&result);
+        let action = move || {
+            let mut str_result = action_result.lock().unwrap();
+            *str_result = String::from("first done");
+        };
+
+        let result2 = Arc::new(Mutex::new(String::new()));
+        let action_result2 = Arc::clone(&result2);
+        let action2 = move || {
+            let mut str_result = action_result2.lock().unwrap();
+            *str_result = String::from("second done");
+        };
+
+        pool.run(Box::new(action));
+        pool.run(Box::new(action2));
+        // Droping the pool forces to be sure the action send to the pool is
+        // already done.
+        drop(pool);
+        let result = &*result.lock().unwrap();
+        assert_eq!(result, "first done");
+
+        let result2 = &*result2.lock().unwrap();
+        assert_eq!(result2, "second done");
+    }
+
 }

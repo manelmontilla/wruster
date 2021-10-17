@@ -21,6 +21,7 @@ fn runs_an_action() {
     let response = action(req);
     println!("{:?}", response);
 }
+
 #[test]
 fn normalizes_path() {
     // Returns error if the path is not absolute.
@@ -69,39 +70,38 @@ fn routes_add_and_get() {
     assert_eq!(Vec::from("content"), resp_body.content);
 }
 
+#[test]
+fn trie_add_key_and_values() {
+    let mut root = Trie::<Box<dyn Fn(String) -> String>>::new();
+    let key = "/a/b/c".as_bytes();
+    let action = |param| {
+        println!("action executed with param {}", param);
+        String::from(param)
+    };
+    root.add_value(key, Box::new(action));
+    let action = root.get_value(key);
+    let resp = action.unwrap()(String::from("value passed"));
+    assert_eq!(resp, "value passed");
+}
 
- #[test]
-    fn trie_add_key_and_values() {
-        let mut root = Trie::<Box<dyn Fn(String) -> String>>::new();
-        let key = "/a/b/c".as_bytes();
-        let action = |param| {
-            println!("action executed with param {}", param);
-            String::from(param)
-        };
-        root.add_value(key, Box::new(action));
-        let action = root.get_value(key);
-        let resp = action.unwrap()(String::from("value passed"));
-        assert_eq!(resp, "value passed");
-    }
+#[test]
+fn trie_find_prefix() {
+    let mut root = Trie::<String>::new();
 
-    #[test]
-    fn trie_find_prefix() {
-        let mut root = Trie::<String>::new();
+    let mut key = "/a/b/c/d".as_bytes();
+    let mut value = String::from("action for route /a/b/c/d");
+    root.add_value(key, value);
 
-        let mut key = "/a/b/c/d".as_bytes();
-        let mut value = String::from("action for route /a/b/c/d");
-        root.add_value(key, value);
+    key = "/a/b".as_bytes();
+    value = String::from("action for route /a/b");
+    root.add_value(key, value);
 
-        key = "/a/b".as_bytes();
-        value = String::from("action for route /a/b");
-        root.add_value(key, value);
+    let value = root.get_value_prefix("/d".as_bytes());
+    assert!(value.is_none());
 
-        let value = root.get_value_prefix("/d".as_bytes());
-        assert!(value.is_none());
+    let value = root.get_value_prefix("/a/b/c".as_bytes());
+    assert_eq!(value.unwrap(), "action for route /a/b");
 
-        let value = root.get_value_prefix("/a/b/c".as_bytes());
-        assert_eq!(value.unwrap(), "action for route /a/b");
-
-        let value = root.get_value_prefix("/a/b/c/d".as_bytes());
-        assert_eq!(value.unwrap(), "action for route /a/b/c/d");
-    }
+    let value = root.get_value_prefix("/a/b/c/d".as_bytes());
+    assert_eq!(value.unwrap(), "action for route /a/b/c/d");
+}
