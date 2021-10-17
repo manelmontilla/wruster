@@ -4,7 +4,7 @@ use std::path::Component;
 use std::sync::Arc;
 
 use crate::trie::Trie;
-use crate::{HttpMethod, Request, Response, StatusCode};
+use crate::{HttpMethod, Request, Response};
 
 type Action = Box<dyn Fn(Request) -> Response + Send + Sync>;
 
@@ -19,7 +19,7 @@ impl Routes {
         }
     }
 
-    pub fn add(&self, route: String, method: HttpMethod, action: Action) {
+    pub fn add(&self, route: &str, method: HttpMethod, action: Action) {
         // We priorize keeping the code of the Trie simpler over adding the
         // routes faster.
         let mut routes = self.routes.borrow_mut();
@@ -31,7 +31,7 @@ impl Routes {
         routes.add_value(&route.as_bytes(), route_actions);
     }
 
-    pub fn get(&self, route: String, method: HttpMethod) -> Option<Arc<Action>> {
+    pub fn get(&self, route: &str, method: HttpMethod) -> Option<Arc<Action>> { 
         let routes = self.routes.borrow();
         let method_actions = match routes.get_value(route.as_bytes()) {
             None => return None,
@@ -57,7 +57,7 @@ pub struct MethodActions {
 impl MethodActions {
     fn new() -> MethodActions {
         let mut actions = Vec::<Option<Arc<Action>>>::new();
-        for i in 0..HttpMethod::get_last() as usize + 1 {
+        for _ in 0..HttpMethod::get_last() as usize + 1 {
             actions.push(None);
         }
         MethodActions {
@@ -77,10 +77,6 @@ impl MethodActions {
 pub struct RouteAction {
     pub method: HttpMethod,
     pub action: Action,
-}
-
-pub fn static_action(dir: String) -> impl Fn(Request) -> Response {
-    |req: Request| Response::from_status(StatusCode::Ok)
 }
 
 pub trait Normalize

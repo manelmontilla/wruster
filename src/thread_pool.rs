@@ -125,5 +125,4 @@ mod tests {
         let result2 = &*result2.lock().unwrap();
         assert_eq!(result2, "second done");
     }
-
 }

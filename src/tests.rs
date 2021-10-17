@@ -6,22 +6,6 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::str::FromStr;
 
-const REQUEST: &str = "GET / HTTP/1.1\r\nHost: example.com\r\n\r\n";
-
-#[test]
-fn runs_an_action() {
-    let handler = |req: Request| {
-        println!("help");
-        Response::from_status(StatusCode::Ok)
-    };
-    let dir = String::from("/a/b");
-    let action = static_action(dir);
-    println!("request {}", REQUEST);
-    let req = Request::from_str(REQUEST).unwrap();
-    let response = action(req);
-    println!("{:?}", response);
-}
-
 #[test]
 fn normalizes_path() {
     // Returns error if the path is not absolute.
@@ -55,8 +39,8 @@ fn routes_add_and_get() {
         let content = String::from_utf8_lossy(&req.content);
         Response::from_str(&content).unwrap()
     });
-    routes.add(String::from("/a/b"), HttpMethod::GET, action);
-    let action = routes.get(String::from("/a/b"), HttpMethod::GET);
+    routes.add("/a/b", HttpMethod::GET, action);
+    let action = routes.get("/a/b", HttpMethod::GET);
     let action = action.unwrap();
     let request = Request {
         content: Vec::from("content"),
@@ -87,7 +71,6 @@ fn trie_add_key_and_values() {
 #[test]
 fn trie_find_prefix() {
     let mut root = Trie::<String>::new();
-
     let mut key = "/a/b/c/d".as_bytes();
     let mut value = String::from("action for route /a/b/c/d");
     root.add_value(key, value);
@@ -104,4 +87,15 @@ fn trie_find_prefix() {
 
     let value = root.get_value_prefix("/a/b/c/d".as_bytes());
     assert_eq!(value.unwrap(), "action for route /a/b/c/d");
+}
+
+#[test]
+fn trie_find_prefix_root() {
+    let mut root = Trie::<String>::new();
+    let key = "/".as_bytes();
+    let value = String::from("action for route /");
+    root.add_value(key, value);
+    println!("{:?}", root);
+    let value = root.get_value_prefix("/example".as_bytes());
+    assert_eq!(value.unwrap(), "action for route /");
 }
