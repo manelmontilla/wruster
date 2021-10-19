@@ -39,8 +39,8 @@ fn routes_add_and_get() {
         let content = String::from_utf8_lossy(&req.content);
         Response::from_str(&content).unwrap()
     });
-    routes.add(String::from("/a/b"), HttpMethod::GET, action);
-    let action = routes.get(String::from("/a/b"), HttpMethod::GET);
+    routes.add("/a/b", HttpMethod::GET, action);
+    let action = routes.get("/a/b", HttpMethod::GET);
     let action = action.unwrap();
     let request = Request {
         content: Vec::from("content"),

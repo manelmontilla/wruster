@@ -19,7 +19,7 @@ impl Routes {
         }
     }
 
-    pub fn add(&self, route: String, method: HttpMethod, action: Action) {
+    pub fn add(&self, route: &str, method: HttpMethod, action: Action) {
         // We priorize keeping the code of the Trie simpler over adding the
         // routes faster.
         let mut routes = self.routes.borrow_mut();
@@ -31,7 +31,7 @@ impl Routes {
         routes.add_value(&route.as_bytes(), route_actions);
     }
 
-    pub fn get(&self, route: String, method: HttpMethod) -> Option<Arc<Action>> {
+    pub fn get(&self, route: &str, method: HttpMethod) -> Option<Arc<Action>> { 
         let routes = self.routes.borrow();
         let method_actions = match routes.get_value(route.as_bytes()) {
             None => return None,

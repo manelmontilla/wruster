@@ -20,7 +20,11 @@ fn main() {
     let dir = dir.clone();
     let serve_dir = move |request| actions::serve_static(&dir, &request);
     routes.add(
+<<<<<<< HEAD
         String::from("/"),
+=======
+        "/",
+>>>>>>> improve-router
         http::HttpMethod::GET,
         Box::new(serve_dir),
     );
