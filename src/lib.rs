@@ -1,7 +1,10 @@
-use std::io::prelude::*;
 use std::net;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::{io::prelude::*, net::SocketAddr};
+
+#[macro_use]
+extern crate log;
 
 pub mod actions;
 pub mod http;
@@ -16,11 +19,11 @@ use http::*;
 use routes::{Normalize, Routes};
 
 pub fn run_and_serve(addr: &str, routes: Routes) -> ServerResult {
-    let listener_res = net::TcpListener::bind(addr);
-    let listener = match listener_res {
+    let listener = match net::TcpListener::bind(addr) {
         Ok(listener) => listener,
         Err(err) => return Err(Box::new(err)),
     };
+    info!("listening on {}", &addr);
     let config = Arc::new(routes);
     let mut pool = thread_pool::Pool::new(5);
     loop {
@@ -28,33 +31,62 @@ pub fn run_and_serve(addr: &str, routes: Routes) -> ServerResult {
             Err(err) => return Err(Box::new(err)),
             Ok(connection) => connection,
         };
-        println!("\naccepting connection from {}", src_addr);
+        info!("accepting connection from {}", src_addr);
         let cconfig = Arc::clone(&config);
         let action = move || {
-            handle_connection(stream, cconfig);
+            handle_connection(stream, cconfig, src_addr);
         };
         pool.run(Box::new(action));
     }
 }
 
-fn handle_connection(mut stream: net::TcpStream, routes: Arc<Routes>) {
+fn handle_connection(mut stream: net::TcpStream, routes: Arc<Routes>, source_addr: SocketAddr) {
     let mut response = run_action(&mut stream, routes);
     // By now, we don't support keep alive connections.
     response.add_header(String::from("Connection"), String::from("Close"));
-    response.write(&mut stream).unwrap();
-    stream.flush().unwrap();
-    stream.shutdown(net::Shutdown::Both).unwrap();
+    if let Err(err) = response.write(&mut stream) {
+         error!(
+            "error writing response to: {}, error info: {}",
+            source_addr, err
+        );
+        return;
+    }
+
+    if let Err(err) = stream.flush() {
+        error!(
+            "error flusing stream to: {}, error info: {}",
+            source_addr, err
+        );
+        return;
+    }
+    if let Err(err) = stream.shutdown(net::Shutdown::Both) {
+        error!(
+            "error closing  connection with: {}, error info: {}",
+            source_addr, err
+        );
+        return;
+    }
 }
 
 fn run_action(stream: &mut net::TcpStream, routes: Arc<Routes>) -> Response {
     let mut request = match Request::from(stream) {
-        Err(err) => return Response::from_status(StatusCode::InternalServerError),
+        Err(err) => {
+            error!("error parsing request, error info: {}", err);
+            return Response::from_status(StatusCode::InternalServerError);
+        }
         Ok(request) => request,
     };
     let req_path = PathBuf::from(request.uri);
     let normalized = match req_path.normalize() {
         Ok(path) => path,
-        Err(err) => return Response::from_status(StatusCode::InternalServerError),
+        Err(err) => {
+            let p = match req_path.to_str() {
+                Some(p) => p,
+                None => "unble to get path",
+            };
+            error!("error: parsing path {}, error info: {}", p, err);
+            return Response::from_status(StatusCode::InternalServerError);
+        }
     };
 
     let normalized = match normalized.to_str() {

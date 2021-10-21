@@ -31,7 +31,7 @@ impl Routes {
         routes.add_value(&route.as_bytes(), route_actions);
     }
 
-    pub fn get(&self, route: &str, method: HttpMethod) -> Option<Arc<Action>> { 
+    pub fn get(&self, route: &str, method: HttpMethod) -> Option<Arc<Action>> {
         let routes = self.routes.borrow();
         let method_actions = match routes.get_value(route.as_bytes()) {
             None => return None,
