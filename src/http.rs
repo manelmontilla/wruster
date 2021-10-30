@@ -143,10 +143,12 @@ impl Request {
             Err(err) => return Err(err),
         };
         debug!("request line parsed: {:?}", request_line);
+        let headers = HttpHeaders::read_from(&mut reader)?;
+        
         let request = Request {
             content: Vec::new(),
-            headers: HashMap::new(),
-            method: HttpMethod::TRACE,
+            headers: headers.0,
+            method: request_line.method,
             uri: request_line.uri,
             version: request_line.version,
         };
