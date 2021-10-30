@@ -5,6 +5,8 @@ use std::fmt;
 use std::io;
 use std::io::prelude::*;
 use std::io::BufReader;
+use std::ops::Add;
+use std::option::NoneError;
 use std::str::FromStr;
 use std::string::ParseError;
 
@@ -136,11 +138,18 @@ impl Request {
     pub fn from<T: io::Read>(from: &mut T) -> Result<Request, ParseRequestError> {
         let mut reader = io::BufReader::new(from);
 
-        let request = match Request::read_request_line(&mut reader) {
+        let request_line = match HttpRequestLine::read_from(&mut reader) {
             Ok(request) => request,
             Err(err) => return Err(err),
         };
-
+        debug!("request line parsed: {:?}", request_line);
+        let request = Request {
+            content: Vec::new(),
+            headers: HashMap::new(),
+            method: HttpMethod::TRACE,
+            uri: request_line.uri,
+            version: request_line.version,
+        };
         Ok(request)
     }
 
@@ -148,10 +157,135 @@ impl Request {
         let mut reader = BufReader::new(from.as_bytes());
         Request::from(&mut reader)
     }
+}
 
-    fn read_request_line<T: io::Read>(
+struct HttpHeaders(HashMap<String, String>);
+
+impl HttpHeaders {
+    fn read_from<T: io::Read>(
         from: &mut io::BufReader<T>,
-    ) -> Result<Request, ParseRequestError> {
+    ) -> Result<HttpHeaders, ParseRequestError> {
+        let headers: HttpHeaders = HttpHeaders(HashMap::new());
+        // https://www.w3.org/Protocols/rfc2616/rfc2616-sec4.html#sec4.5:
+        // generic-message = start-line
+        //                   *(message-header CRLF)
+        //                   CRLF
+        //                   [ message-body ]
+
+        loop {
+            let header = HttpHeader::read_from(from)?;
+            match header {
+                None => {
+                    break;
+                }
+                Some(header) => {
+                    headers.0[&header.field_name] = header.field_content;
+                }
+            };
+        }
+        Ok(headers)
+    }
+}
+
+struct HttpHeader {
+    field_name: String,
+    field_content: String,
+}
+
+impl HttpHeader {
+    pub fn read_from<T: io::Read>(
+        from: &mut io::BufReader<T>,
+    ) -> Result<Option<HttpHeader>, ParseRequestError> {
+        //generic-message = start-line
+        //                  *(message-header CRLF)
+        //                   CRLF
+        // Line folding is not supported as specified in:
+        // https://www.rfc-editor.org/rfc/rfc7230#section-3.2.4
+        let mut line = Vec::<u8>::new();
+        loop {
+            let mut header_chunk = Vec::<u8>::new();
+            if let Err(err) = from.read_until('\n' as u8, &mut header_chunk) {
+                return Err(ParseRequestError {
+                    msg: err.to_string(),
+                });
+            };
+            line.append(&mut header_chunk);
+            let len = line.len();
+            if len < 2 {
+                continue;
+            }
+            if line[len - 1] == '\n' as u8 && line[len - 2] == '\r' as u8 {
+                break;
+            }
+        }
+        HttpHeader::parse_header_line(line)
+    }
+
+    fn parse_header_line(line: Vec<u8>) -> Result<Option<HttpHeader>, ParseRequestError> {
+        // header-field   = field-name ":" OWS field-value OWS
+        // field-name     = token
+        // field-value    = *( field-content / obs-fold )
+        // field-content  = field-vchar [ 1*( SP / HTAB ) field-vchar ]
+        // field-vchar    = VCHAR / obs-text
+        assert!(line.len() >= 2);
+        if line.len() == 2 {
+            return Ok(None);
+        };
+        // Remove the \r\n at the end of the header line.
+        let line = &line[..line.len() - 2];
+        // Read the field-name which is a token:
+        // https://www.rfc-editor.org/rfc/rfc7230#section-3.2.6
+        let mut name = String::new();
+        let mut i = 0;
+        while i < line.len() {
+            let c = line[i] as char;
+            if !c.is_valid_token_char() {
+                break;
+            };
+            name.push(c);
+            i += 1;
+        }
+        if name.len() < 1 {
+            return Err(ParseRequestError {
+                msg: String::from("invalid header name"),
+            });
+        };
+        // After the token we MUST receive a colon and a header value with a
+        // length of, at least, 1 char.
+        if i > line.len() - 2 || line[i + 1] != ':' as u8 {
+            return Err(ParseRequestError {
+                msg: String::from("invalid header name"),
+            });
+        };
+        // We don't support folding so the field-value = field-content
+        let mut field_value = String::new();
+        for _ in i..line.len() {
+            let c = line[i] as char;
+            if !c.is_valid_field_content() {
+                return Err(ParseRequestError {
+                    msg: String::from("invalid header value"),
+                });
+            }
+            field_value.push(c);
+        }
+        Ok(Some(HttpHeader {
+            field_name: name,
+            field_content: field_value,
+        }))
+    }
+}
+
+#[derive(Debug)]
+struct HttpRequestLine {
+    method: HttpMethod,
+    uri: String,
+    version: String,
+}
+
+impl HttpRequestLine {
+    fn read_from<T: io::Read>(
+        from: &mut io::BufReader<T>,
+    ) -> Result<HttpRequestLine, ParseRequestError> {
         // Request-Line   = Method SP Request-URI SP HTTP-Version CRLF
         // https://www.w3.org/Protocols/rfc2616/rfc2616-sec5.html
 
@@ -198,11 +332,7 @@ impl Request {
                 msg: String::from("invalied request line"),
             });
         };
-        if version[version.len() - 1] != ('\n' as u8) {
-            return Err(ParseRequestError {
-                msg: String::from("invalied request line"),
-            });
-        }
+
         if version[version.len() - 2] != ('\r' as u8) {
             return Err(ParseRequestError {
                 msg: String::from("invalied request line"),
@@ -210,12 +340,10 @@ impl Request {
         }
         let version = String::from_utf8_lossy(&version[..version.len() - 2]);
 
-        Ok(Request {
+        Ok(HttpRequestLine {
             method: method,
             uri: String::from(uri),
             version: String::from(version),
-            headers: HashMap::new(),
-            content: Vec::new(),
         })
     }
 }
@@ -279,5 +407,47 @@ impl fmt::Display for HttpMethod {
             &HttpMethod::PUT => write!(f, "PUT"),
             &HttpMethod::TRACE => write!(f, "TRACE"),
         }
+    }
+}
+
+trait HttpMessageChar {
+    fn is_valid_token_char(self) -> bool;
+
+    fn is_valid_field_content(self) -> bool;
+
+    fn is_valid_vchar(self) -> bool;
+}
+
+impl HttpMessageChar for char {
+    fn is_valid_token_char(self: char) -> bool {
+        // We don't support non ascii chars in tokens.
+        if !self.is_ascii() {
+            return false;
+        }
+        if self.is_alphanumeric() {
+            return true;
+        };
+        let valid_token_symbols = [
+            '!', '#', '$', '%', '&', '\'', '*', '+', '-', '.', '^', '_', '`', '|', '~',
+        ];
+        if valid_token_symbols.contains(&self) {
+            return true;
+        };
+        return false;
+    }
+
+    fn is_valid_vchar(self) -> bool {
+        // field-vchar    = VCHAR / obs-text
+        if self.is_ascii_graphic() {
+            return true;
+        };
+        if self as u8 >= 0x80 && self as u8 <= 0xFF {
+            return true;
+        };
+        return false;
+    }
+
+    fn is_valid_field_content(self) -> bool {
+        self.is_valid_token_char() || self == ' ' || self == '\t'
     }
 }

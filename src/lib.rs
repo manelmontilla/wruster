@@ -45,7 +45,7 @@ fn handle_connection(mut stream: net::TcpStream, routes: Arc<Routes>, source_add
     // By now, we don't support keep alive connections.
     response.add_header(String::from("Connection"), String::from("Close"));
     if let Err(err) = response.write(&mut stream) {
-         error!(
+        error!(
             "error writing response to: {}, error info: {}",
             source_addr, err
         );
