@@ -1,15 +1,19 @@
-#[cfg(test)]
-mod tests;
-
 use std::collections::hash_map::HashMap;
 use std::convert::Infallible;
 use std::error::Error;
 use std::fmt;
+use std::fmt::Debug;
 use std::io;
 use std::io::prelude::*;
 use std::io::BufReader;
 use std::str::FromStr;
 use std::string::ParseError;
+
+#[macro_use]
+use log;
+
+#[cfg(test)]
+mod tests;
 
 pub type ServerResult = Result<(), Box<dyn Error>>;
 pub type ServerResultData<T> = Result<T, Box<dyn Error>>;
@@ -192,7 +196,7 @@ impl HttpHeaders {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Display)]
 struct HttpHeader {
     field_name: String,
     field_content: String,
@@ -252,12 +256,14 @@ impl HttpHeader {
             i += 1;
         }
         if name.len() < 1 {
+            debug!("invalid header name line: {}, missing header name", String::from_utf8_lossy(line));
             return Err(ParseRequestError {
                 msg: String::from("invalid header name"),
             });
         };
         // After the token we MUST receive a colon.
         if line[i] != ':' as u8 {
+            debug!("invalid header line: {}, missing semicolon", String::from_utf8_lossy(line));
             return Err(ParseRequestError {
                 msg: String::from("invalid header name"),
             });
@@ -266,6 +272,7 @@ impl HttpHeader {
         let header_value_start = i + 1;
         let header_value_length = line.len() - header_value_start;
         if header_value_length < 1 {
+            debug!("invalid header value line: {}", String::from_utf8_lossy(line));
             return Err(ParseRequestError {
                 msg: String::from("invalid header value"),
             });
@@ -275,16 +282,19 @@ impl HttpHeader {
         for j in header_value_start..line.len() {
             let c = line[j] as char;
             if !c.is_valid_field_content() {
+                debug!("invalid header value line: {}, char {}, position {}", String::from_utf8_lossy(line), c, j);
                 return Err(ParseRequestError {
                     msg: String::from("invalid header value"),
                 });
             }
             field_value.push(c);
         }
-        Ok(Some(HttpHeader {
+        let header = HttpHeader {
             field_name: name,
             field_content: field_value,
-        }))
+        };
+        debug!("header parsed: {}", header);
+        Ok(Some(header))
     }
 }
 
@@ -461,6 +471,6 @@ impl HttpMessageChar for char {
     }
 
     fn is_valid_field_content(self) -> bool {
-        self.is_valid_token_char() || self == ' ' || self == '\t'
+        self.is_valid_vchar() || self == ' ' || self == '\t'
     }
 }

@@ -3,13 +3,23 @@ use std::io::BufReader;
 
 #[test]
 fn http_header_parse_standard() {
-    // Test parsing standard header.
-    let header_content = "header-name:headervalue\r\n";
+    // Test parsing standard headers
+    let header_content = "header-name:header value\r\n";
     let mut stream = BufReader::new(header_content.as_bytes());
     let header_content = HttpHeader::read_from(&mut stream).unwrap().unwrap();
     assert_eq!(header_content.field_name.as_str(), "header-name");
-    assert_eq!(header_content.field_content.as_str(), "header-value");
+    assert_eq!(header_content.field_content.as_str(), "header value");
 }
+
+#[test]
+fn http_header_parse_with_colon_values() {
+    let header_content = "Host: localhost:1234\r\n";
+    let mut stream = BufReader::new(header_content.as_bytes());
+    let header_content = HttpHeader::read_from(&mut stream).unwrap().unwrap();
+    assert_eq!(header_content.field_name.as_str(), "Host");
+    assert_eq!(header_content.field_content.as_str(), " localhost:1234");
+}
+
 
 #[test]
 fn http_header_invalid_tokens() {
