@@ -1,3 +1,6 @@
+#[cfg(test)]
+mod tests;
+
 use std::collections::hash_map::HashMap;
 use std::convert::Infallible;
 use std::error::Error;
@@ -5,8 +8,6 @@ use std::fmt;
 use std::io;
 use std::io::prelude::*;
 use std::io::BufReader;
-use std::ops::Add;
-use std::option::NoneError;
 use std::str::FromStr;
 use std::string::ParseError;
 
@@ -112,7 +113,7 @@ impl fmt::Display for StatusCode {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct ParseRequestError {
     msg: String,
 }
@@ -144,7 +145,7 @@ impl Request {
         };
         debug!("request line parsed: {:?}", request_line);
         let headers = HttpHeaders::read_from(&mut reader)?;
-        
+
         let request = Request {
             content: Vec::new(),
             headers: headers.0,
@@ -167,7 +168,7 @@ impl HttpHeaders {
     fn read_from<T: io::Read>(
         from: &mut io::BufReader<T>,
     ) -> Result<HttpHeaders, ParseRequestError> {
-        let headers: HttpHeaders = HttpHeaders(HashMap::new());
+        let mut headers: HttpHeaders = HttpHeaders(HashMap::new());
         // https://www.w3.org/Protocols/rfc2616/rfc2616-sec4.html#sec4.5:
         // generic-message = start-line
         //                   *(message-header CRLF)
@@ -181,7 +182,7 @@ impl HttpHeaders {
                     break;
                 }
                 Some(header) => {
-                    headers.0[&header.field_name] = header.field_content;
+                    headers.0.insert(header.field_name, header.field_content);
                 }
             };
         }
@@ -189,6 +190,7 @@ impl HttpHeaders {
     }
 }
 
+#[derive(Debug)]
 struct HttpHeader {
     field_name: String,
     field_content: String,
@@ -252,17 +254,24 @@ impl HttpHeader {
                 msg: String::from("invalid header name"),
             });
         };
-        // After the token we MUST receive a colon and a header value with a
-        // length of, at least, 1 char.
-        if i > line.len() - 2 || line[i + 1] != ':' as u8 {
+        // After the token we MUST receive a colon.
+        if line[i] != ':' as u8 {
             return Err(ParseRequestError {
                 msg: String::from("invalid header name"),
             });
         };
+        // The header value must have at least one octed.
+        let header_value_start = i + 1;
+        let header_value_length = line.len() - header_value_start;
+        if header_value_length < 1 {
+            return Err(ParseRequestError {
+                msg: String::from("invalid header value"),
+            });
+        };
         // We don't support folding so the field-value = field-content
         let mut field_value = String::new();
-        for _ in i..line.len() {
-            let c = line[i] as char;
+        for j in header_value_start..line.len() {
+            let c = line[j] as char;
             if !c.is_valid_field_content() {
                 return Err(ParseRequestError {
                     msg: String::from("invalid header value"),
@@ -443,7 +452,7 @@ impl HttpMessageChar for char {
         if self.is_ascii_graphic() {
             return true;
         };
-        if self as u8 >= 0x80 && self as u8 <= 0xFF {
+        if self as u8 >= 0x80 {
             return true;
         };
         return false;
