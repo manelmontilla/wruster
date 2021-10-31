@@ -57,3 +57,13 @@ fn http_header_invalid_header_values() {
         }
     );
 }
+
+#[test]
+fn http_headers_parse() {
+    let header_content = "header-one: value-one\r\n\r\n";
+    let stream = &mut BufReader::new(header_content.as_bytes());
+    let result = HttpHeaders::read_from(stream).unwrap();
+    assert_eq!(result.0.keys().len(),1);
+    let value =result.0.get_key_value("header-one").unwrap();
+    assert_eq!(value,(&String::from("header-one"),&String::from(" value-one")));
+}

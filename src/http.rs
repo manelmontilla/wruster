@@ -101,6 +101,7 @@ pub enum StatusCode {
     Ok,
     InternalServerError,
     NotFound,
+    BadRequest,
 }
 
 impl fmt::Display for StatusCode {
@@ -109,6 +110,7 @@ impl fmt::Display for StatusCode {
             StatusCode::Ok => write!(f, "200 OK"),
             StatusCode::InternalServerError => write!(f, "500 Internal Server Error"),
             StatusCode::NotFound => write!(f, "404 Not found"),
+            &StatusCode::BadRequest => write!(f, "400 Bad Request")
         }
     }
 }

@@ -72,7 +72,7 @@ fn run_action(stream: &mut net::TcpStream, routes: Arc<Routes>) -> Response {
     let mut request = match Request::from(stream) {
         Err(err) => {
             error!("error parsing request, error info: {}", err);
-            return Response::from_status(StatusCode::InternalServerError);
+            return Response::from_status(StatusCode::BadRequest);
         }
         Ok(request) => request,
     };
