@@ -1,4 +1,5 @@
 use std::collections::hash_map::HashMap;
+use std::io::Cursor;
 use std::convert::Infallible;
 use std::error::Error;
 use std::fmt;
@@ -21,28 +22,46 @@ mod tests;
 pub type ServerResult = Result<(), Box<dyn Error>>;
 pub type ServerResultData<T> = Result<T, Box<dyn Error>>;
 
-#[derive(Debug)]
 pub struct Body {
     pub content_type: mime::Mime,
-    pub content: Vec<u8>,
+    pub content_length: u64,
+    pub content: Box<dyn Read>,
 }
 
 impl Body {
-    fn write<T: io::Write>(&self, to: &mut T) -> ServerResult {
-        let mut header = format!("Content-Type: {}\r\n", self.content_type);
+    pub fn write<T: io::Write>(
+        &mut self,
+        to: &mut T,
+    ) -> ServerResult {
+        let mut header = format!("Content-Type: {}\r\n", &self.content_type);
         if let Err(err) = to.write(header.as_bytes()) {
             return Err(Box::new(err));
         };
-        header = format!("Conent-Length: {}\r\n\r\n", self.content.len());
+        header = format!("Conent-Length: {}\r\n\r\n", self.content_length);
         if let Err(err) = to.write(header.as_bytes()) {
             return Err(Box::new(err));
         };
-        if let Err(err) = to.write(&self.content) {
+        self.write_content(to)
+    }
+
+    pub fn write_content<T: io::Write>(
+        &mut self,
+        to: &mut T,
+    ) -> ServerResult {
+       let src = &mut self.content;
+        if let Err(err) = io::copy(src, to) {
             return Err(Box::new(err));
         };
         Ok(())
     }
 }
+
+impl fmt::Debug for Body {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "content-type: {}, content-length: {}, content: ....", self.content_type, self.content_length)
+    }
+}
+
 
 #[derive(Debug)]
 pub struct Response {
@@ -56,7 +75,7 @@ impl Response {
         self.headers.insert(name, value);
     }
 
-    pub fn write<T: io::Write>(&self, to: &mut T) -> ServerResult {
+    pub fn write<T: io::Write>(&mut self, to: &mut T) -> ServerResult {
         let payload = format!("HTTP/1.1 {:#}\r\n", self.status);
         if let Err(err) = to.write(payload.as_bytes()) {
             return Err(Box::new(err));
@@ -73,7 +92,7 @@ impl Response {
                 Err(err) => return Err(Box::new(err)),
             }
         };
-        let body = self.body.as_ref().unwrap();
+        let body = self.body.as_mut().unwrap();
         body.write(to)
     }
 
@@ -89,14 +108,14 @@ impl Response {
 impl FromStr for Response {
     type Err = ParseError;
     fn from_str(content: &str) -> Result<Response, Infallible> {
-        let content = String::from(content);
         let content = Vec::from(content);
         let resp = Response {
             status: StatusCode::Ok,
             headers: HashMap::new(),
             body: Some(Body {
+                content_length: content.len() as u64,
                 content_type: mime::TEXT_PLAIN,
-                content: content,
+                content: Box::new(Cursor::new(content)),
             }),
         };
         Ok(resp)

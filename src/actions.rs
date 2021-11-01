@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 use std::fs;
+use std::io::BufReader;
 use std::{io, path::PathBuf};
+
 
 use crate::http::{Body, Request, Response, StatusCode};
 
@@ -15,7 +17,18 @@ pub fn serve_static(dir: &str, request: &Request) -> Response {
     }
     let mut path = base_path.clone();
     path.push(uri);
-    let content = match fs::read(&path) {
+
+    let metadata = match fs::metadata(&path) {
+        Ok(metadata) => metadata,
+        Err(err) => {
+            if let io::ErrorKind::NotFound = err.kind() {
+                return Response::from_status(StatusCode::NotFound);
+            }
+            return Response::from_status(StatusCode::InternalServerError);
+        }
+    };
+
+    let content = match fs::File::open(&path) {
         Ok(content) => content,
         Err(err) => {
             if let io::ErrorKind::NotFound = err.kind() {
@@ -29,8 +42,9 @@ pub fn serve_static(dir: &str, request: &Request) -> Response {
         status: StatusCode::Ok,
         headers: HashMap::new(),
         body: Some(Body {
+            content_length: metadata.len(),
             content_type: mime_type,
-            content: content,
+            content: Box::new(BufReader::new(content)),
         }),
     };
     resp

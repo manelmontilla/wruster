@@ -50,8 +50,10 @@ fn routes_add_and_get() {
         headers: HttpHeaders::new(),
     };
     let resp = action(request);
-    let resp_body = resp.body.unwrap();
-    assert_eq!(Vec::from("content"), resp_body.content);
+    let mut resp_body = resp.body.unwrap();
+    let mut content = Vec::<u8>::new();
+    resp_body.write_content(&mut content).unwrap();
+    assert_eq!(Vec::from("content"), content);
 }
 
 #[test]
