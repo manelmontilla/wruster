@@ -1,10 +1,10 @@
+use crate::http::headers::*;
 use crate::http::*;
-use crate::routes::*;
-use crate::trie::*;
-
-use std::collections::HashMap;
 use std::path::PathBuf;
 use std::str::FromStr;
+
+use crate::routes::*;
+use crate::trie::*;
 
 #[test]
 fn normalizes_path() {

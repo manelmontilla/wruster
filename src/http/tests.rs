@@ -1,5 +1,6 @@
-use super::*;
 use std::io::BufReader;
+
+use super::*;
 
 #[test]
 fn http_header_parse_standard() {
