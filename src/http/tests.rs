@@ -76,4 +76,31 @@ fn http_headers_parse() {
         &result.list[0],
         &(String::from("header-one"), String::from("value-one"))
     );
+
+    // Multiple values for the same header are appended separated by a comma.
+    let header_content = "header-one: value-one\r\nheader-one: value-two\r\n\r\n";
+    let stream = &mut BufReader::new(header_content.as_bytes());
+    let result = HttpHeaders::read_from(stream).unwrap();
+    assert_eq!(result.list.len(), 1);
+    assert_eq!(
+        &result.list[0],
+        &(String::from("header-one"), String::from("value-one,value-two"))
+    );
+
+
+    // Multiple values for the same header are not joined in the same header if the name
+    // of the Header is "Set-Cookie".
+    let header_content = "Set-Cookie: cookie1\r\nSet-Cookie: cookie2\r\n\r\n";
+    let stream = &mut BufReader::new(header_content.as_bytes());
+    let result = HttpHeaders::read_from(stream).unwrap();
+    assert_eq!(result.list.len(), 2);
+    assert_eq!(
+        &result.list[0],
+        &(String::from("Set-Cookie"), String::from("cookie1"))
+    );
+    assert_eq!(
+        &result.list[1],
+        &(String::from("Set-Cookie"), String::from("cookie2"))
+    );
+
 }

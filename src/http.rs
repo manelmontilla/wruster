@@ -175,9 +175,7 @@ pub struct HttpHeaders {
 
 impl HttpHeaders {
     pub fn new() -> HttpHeaders {
-        HttpHeaders{
-            list:Vec::new(),
-        }
+        HttpHeaders { list: Vec::new() }
     }
     fn read_from<T: io::Read>(
         from: &mut io::BufReader<T>,
@@ -196,8 +194,9 @@ impl HttpHeaders {
                     break;
                 }
                 Some(header) => {
-                    // headers.0.insert(header.field_name, header.field_content);
-                    headers.list.push((header.field_name,header.field_content));
+                    // headers.list.push((header.field_name, header.field_content));
+                    headers.add_header(header);
+
                 }
             };
         }
@@ -209,7 +208,23 @@ impl HttpHeaders {
         let name = header.field_name;
         let content = header.field_content;
         // If the header already exists append the value separated by a comma.
+        // Excetp if the header is Set-Cookie:
         // https://www.rfc-editor.org/rfc/rfc7230#section-3.2.2
+
+        match self.list.binary_search_by(|probe| probe.0.cmp(&name)) {
+            Err(i) => {
+                self.list.insert(i, (name, content))
+            }
+            Ok(i) => {
+                 if name == "Set-Cookie" {
+                     self.list.insert(i + 1, (name, content));
+                     return;
+                 }
+                 let old = &mut self.list[i];
+                 old.1.push(',');
+                 old.1.push_str(&content);
+                }
+        };
     }
 }
 
