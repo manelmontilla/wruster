@@ -9,9 +9,6 @@ use std::io::BufReader;
 use std::str::FromStr;
 use std::string::ParseError;
 
-#[macro_use]
-use log;
-
 #[cfg(test)]
 mod tests;
 
