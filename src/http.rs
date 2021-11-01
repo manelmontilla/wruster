@@ -114,7 +114,7 @@ impl fmt::Display for StatusCode {
             StatusCode::Ok => write!(f, "200 OK"),
             StatusCode::InternalServerError => write!(f, "500 Internal Server Error"),
             StatusCode::NotFound => write!(f, "404 Not found"),
-            &StatusCode::BadRequest => write!(f, "400 Bad Request")
+            &StatusCode::BadRequest => write!(f, "400 Bad Request"),
         }
     }
 }
@@ -137,7 +137,7 @@ pub struct Request {
     pub method: HttpMethod,
     pub uri: String,
     pub version: String,
-    pub headers: HashMap<String, String>,
+    pub headers: HttpHeaders,
     pub content: Vec<u8>,
 }
 
@@ -154,7 +154,7 @@ impl Request {
 
         let request = Request {
             content: Vec::new(),
-            headers: headers.0,
+            headers: headers,
             method: request_line.method,
             uri: request_line.uri,
             version: request_line.version,
@@ -168,19 +168,27 @@ impl Request {
     }
 }
 
-struct HttpHeaders(HashMap<String, String>);
+#[derive(Debug)]
+pub struct HttpHeaders {
+    list: Vec<(String, String)>,
+}
 
 impl HttpHeaders {
+    pub fn new() -> HttpHeaders {
+        HttpHeaders{
+            list:Vec::new(),
+        }
+    }
     fn read_from<T: io::Read>(
         from: &mut io::BufReader<T>,
     ) -> Result<HttpHeaders, ParseRequestError> {
-        let mut headers: HttpHeaders = HttpHeaders(HashMap::new());
+        let mut headers = Self::new();
         // https://www.w3.org/Protocols/rfc2616/rfc2616-sec4.html#sec4.5:
         // generic-message = start-line
         //                   *(message-header CRLF)
         //                   CRLF
         //                   [ message-body ]
-
+        debug!("parsing headers");
         loop {
             let header = HttpHeader::read_from(from)?;
             match header {
@@ -188,15 +196,24 @@ impl HttpHeaders {
                     break;
                 }
                 Some(header) => {
-                    headers.0.insert(header.field_name, header.field_content);
+                    // headers.0.insert(header.field_name, header.field_content);
+                    headers.list.push((header.field_name,header.field_content));
                 }
             };
         }
+        debug!("headers parsed");
         Ok(headers)
+    }
+
+    fn add_header(&mut self, header: HttpHeader) {
+        let name = header.field_name;
+        let content = header.field_content;
+        // If the header already exists append the value separated by a comma.
+        // https://www.rfc-editor.org/rfc/rfc7230#section-3.2.2
     }
 }
 
-#[derive(Debug, Display)]
+#[derive(Debug)]
 struct HttpHeader {
     field_name: String,
     field_content: String,
@@ -256,45 +273,72 @@ impl HttpHeader {
             i += 1;
         }
         if name.len() < 1 {
-            debug!("invalid header name line: {}, missing header name", String::from_utf8_lossy(line));
+            debug!(
+                "invalid header name line: {}, missing header name",
+                String::from_utf8_lossy(line)
+            );
             return Err(ParseRequestError {
                 msg: String::from("invalid header name"),
             });
         };
         // After the token we MUST receive a colon.
         if line[i] != ':' as u8 {
-            debug!("invalid header line: {}, missing semicolon", String::from_utf8_lossy(line));
+            debug!(
+                "invalid header line: {}, missing semicolon",
+                String::from_utf8_lossy(line)
+            );
             return Err(ParseRequestError {
                 msg: String::from("invalid header name"),
             });
         };
         // The header value must have at least one octed.
-        let header_value_start = i + 1;
+        let mut header_value_start = i + 1;
         let header_value_length = line.len() - header_value_start;
         if header_value_length < 1 {
-            debug!("invalid header value line: {}", String::from_utf8_lossy(line));
+            debug!(
+                "invalid header value line: {}",
+                String::from_utf8_lossy(line)
+            );
             return Err(ParseRequestError {
                 msg: String::from("invalid header value"),
             });
         };
-        // We don't support folding so the field-value = field-content
+        // We don't support folding so the field-value = field-content.
         let mut field_value = String::new();
+        // Skip the initial optional white space if any.
+        let mut j = header_value_start;
+        while j < line.len() && (line[j] as char).is_optional_white_space() {
+            j += 1;
+        }
+        header_value_start = j;
         for j in header_value_start..line.len() {
             let c = line[j] as char;
             if !c.is_valid_field_content() {
-                debug!("invalid header value line: {}, char {}, position {}", String::from_utf8_lossy(line), c, j);
+                debug!(
+                    "invalid header value line: {}, char {}, position {}",
+                    String::from_utf8_lossy(line),
+                    c,
+                    j
+                );
                 return Err(ParseRequestError {
                     msg: String::from("invalid header value"),
                 });
             }
             field_value.push(c);
         }
+
         let header = HttpHeader {
             field_name: name,
             field_content: field_value,
         };
         debug!("header parsed: {}", header);
         Ok(Some(header))
+    }
+}
+
+impl fmt::Display for HttpHeader {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}:{}", self.field_name, self.field_content)
     }
 }
 
@@ -439,6 +483,8 @@ trait HttpMessageChar {
     fn is_valid_field_content(self) -> bool;
 
     fn is_valid_vchar(self) -> bool;
+
+    fn is_optional_white_space(self) -> bool;
 }
 
 impl HttpMessageChar for char {
@@ -471,6 +517,10 @@ impl HttpMessageChar for char {
     }
 
     fn is_valid_field_content(self) -> bool {
-        self.is_valid_vchar() || self == ' ' || self == '\t'
+        self.is_valid_vchar() || self.is_optional_white_space()
+    }
+
+    fn is_optional_white_space(self) -> bool {
+        self == ' ' || self == '\t'
     }
 }

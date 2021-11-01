@@ -47,7 +47,7 @@ fn routes_add_and_get() {
         method: HttpMethod::POST,
         uri: String::from("/"),
         version: String::from("HTTP/1.1"),
-        headers: HashMap::new(),
+        headers: HttpHeaders::new(),
     };
     let resp = action(request);
     let resp_body = resp.body.unwrap();

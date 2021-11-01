@@ -17,9 +17,8 @@ fn http_header_parse_with_colon_values() {
     let mut stream = BufReader::new(header_content.as_bytes());
     let header_content = HttpHeader::read_from(&mut stream).unwrap().unwrap();
     assert_eq!(header_content.field_name.as_str(), "Host");
-    assert_eq!(header_content.field_content.as_str(), " localhost:1234");
+    assert_eq!(header_content.field_content.as_str(), "localhost:1234");
 }
-
 
 #[test]
 fn http_header_invalid_tokens() {
@@ -29,17 +28,16 @@ fn http_header_invalid_tokens() {
     assert_eq!(
         HttpHeader::read_from(&mut stream).unwrap_err(),
         ParseRequestError {
-            msg: String::from("invalid header value")
+            msg: String::from("invalid header name")
         }
     );
-
 
     let header_content = "header\x0Bname:headervalue\r\n";
     let mut stream = BufReader::new(header_content.as_bytes());
     assert_eq!(
         HttpHeader::read_from(&mut stream).unwrap_err(),
         ParseRequestError {
-            msg: String::from("invalid header value")
+            msg: String::from("invalid header name")
         }
     );
 }
@@ -73,7 +71,9 @@ fn http_headers_parse() {
     let header_content = "header-one: value-one\r\n\r\n";
     let stream = &mut BufReader::new(header_content.as_bytes());
     let result = HttpHeaders::read_from(stream).unwrap();
-    assert_eq!(result.0.keys().len(),1);
-    let value =result.0.get_key_value("header-one").unwrap();
-    assert_eq!(value,(&String::from("header-one"),&String::from(" value-one")));
+    assert_eq!(result.list.len(), 1);
+    assert_eq!(
+        &result.list[0],
+        &(String::from("header-one"), String::from("value-one"))
+    );
 }
