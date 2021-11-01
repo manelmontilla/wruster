@@ -84,9 +84,11 @@ fn http_headers_parse() {
     assert_eq!(result.list.len(), 1);
     assert_eq!(
         &result.list[0],
-        &(String::from("header-one"), String::from("value-one,value-two"))
+        &(
+            String::from("header-one"),
+            String::from("value-one,value-two")
+        )
     );
-
 
     // Multiple values for the same header are not joined in the same header if the name
     // of the Header is "Set-Cookie".
@@ -102,5 +104,4 @@ fn http_headers_parse() {
         &result.list[1],
         &(String::from("Set-Cookie"), String::from("cookie2"))
     );
-
 }

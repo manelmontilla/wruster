@@ -196,7 +196,6 @@ impl HttpHeaders {
                 Some(header) => {
                     // headers.list.push((header.field_name, header.field_content));
                     headers.add_header(header);
-
                 }
             };
         }
@@ -212,18 +211,16 @@ impl HttpHeaders {
         // https://www.rfc-editor.org/rfc/rfc7230#section-3.2.2
 
         match self.list.binary_search_by(|probe| probe.0.cmp(&name)) {
-            Err(i) => {
-                self.list.insert(i, (name, content))
-            }
+            Err(i) => self.list.insert(i, (name, content)),
             Ok(i) => {
-                 if name == "Set-Cookie" {
-                     self.list.insert(i + 1, (name, content));
-                     return;
-                 }
-                 let old = &mut self.list[i];
-                 old.1.push(',');
-                 old.1.push_str(&content);
+                if name == "Set-Cookie" {
+                    self.list.insert(i + 1, (name, content));
+                    return;
                 }
+                let old = &mut self.list[i];
+                old.1.push(',');
+                old.1.push_str(&content);
+            }
         };
     }
 }
