@@ -143,8 +143,8 @@ pub struct Request {
 
 impl Request {
     pub fn from<T: io::Read>(from: &mut T) -> Result<Request, ParseRequestError> {
+        debug!("pasing request");
         let mut reader = io::BufReader::new(from);
-
         let request_line = match HttpRequestLine::read_from(&mut reader) {
             Ok(request) => request,
             Err(err) => return Err(err),
@@ -159,6 +159,7 @@ impl Request {
             uri: request_line.uri,
             version: request_line.version,
         };
+        debug!("request parsed: {:?}", request);
         Ok(request)
     }
 
