@@ -1,12 +1,12 @@
 use std::collections::hash_map::HashMap;
-use std::io::Cursor;
+use std::io;
+use std::io::{Cursor, BufReader, prelude::*};
+
 use std::convert::Infallible;
 use std::error::Error;
 use std::fmt;
 use std::fmt::Debug;
-use std::io;
-use std::io::prelude::*;
-use std::io::BufReader;
+
 use std::str::FromStr;
 use std::string::ParseError;
 
@@ -20,7 +20,6 @@ use headers::*;
 mod tests;
 
 pub type ServerResult = Result<(), Box<dyn Error>>;
-pub type ServerResultData<T> = Result<T, Box<dyn Error>>;
 
 pub struct Body {
     pub content_type: mime::Mime,
@@ -147,7 +146,7 @@ pub struct Request {
     pub uri: String,
     pub version: String,
     pub headers: HttpHeaders,
-    pub content: Vec<u8>,
+    pub body: Vec<u8>,
 }
 
 impl Request {
@@ -160,13 +159,15 @@ impl Request {
         };
         debug!("request line parsed: {:?}", request_line);
         let headers = HttpHeaders::read_from(&mut reader)?;
-
+        debug!("headers parsed: {:?}", headers);
+        // For a request to have body a Content-Length or Transfer-Enconding header must be present.
+        
         let request = Request {
-            content: Vec::new(),
-            headers: headers,
             method: request_line.method,
             uri: request_line.uri,
             version: request_line.version,
+            headers,
+            body: Vec::new(),
         };
         debug!("request parsed: {:?}", request);
         Ok(request)
@@ -176,6 +177,7 @@ impl Request {
         let mut reader = BufReader::new(from.as_bytes());
         Request::from(&mut reader)
     }
+
 }
 
 #[derive(Debug)]

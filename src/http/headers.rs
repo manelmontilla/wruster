@@ -15,6 +15,7 @@ impl HttpHeaders {
     pub fn new() -> HttpHeaders {
         HttpHeaders { list: Vec::new() }
     }
+
     pub fn read_from<T: io::Read>(
         from: &mut io::BufReader<T>,
     ) -> Result<HttpHeaders, ParseRequestError> {

@@ -36,14 +36,14 @@ fn normalizes_path() {
 fn routes_add_and_get() {
     let routes = Routes::new();
     let action = Box::new(|req: Request| {
-        let content = String::from_utf8_lossy(&req.content);
+        let content = String::from_utf8_lossy(&req.body);
         Response::from_str(&content).unwrap()
     });
     routes.add("/a/b", HttpMethod::GET, action);
     let action = routes.get("/a/b", HttpMethod::GET);
     let action = action.unwrap();
     let request = Request {
-        content: Vec::from("content"),
+        body: Vec::from("content"),
         method: HttpMethod::POST,
         uri: String::from("/"),
         version: String::from("HTTP/1.1"),
