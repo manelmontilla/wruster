@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::fmt;
 use std::fmt::Debug;
 use std::io;
@@ -8,12 +9,18 @@ use super::HttpMessageChar;
 
 #[derive(Debug)]
 pub struct HttpHeaders {
-    pub list: Vec<(String, String)>,
+    headers: HashMap<String, Vec<String>>,
 }
 
 impl HttpHeaders {
     pub fn new() -> HttpHeaders {
-        HttpHeaders { list: Vec::new() }
+        HttpHeaders {
+            headers: HashMap::new(),
+        }
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = (&String, &Vec<String>)> {
+        self.headers.iter()
     }
 
     pub fn read_from<T: io::Read>(
@@ -33,7 +40,6 @@ impl HttpHeaders {
                     break;
                 }
                 Some(header) => {
-                    // headers.list.push((header.field_name, header.field_content));
                     headers.add_header(header);
                 }
             };
@@ -42,25 +48,21 @@ impl HttpHeaders {
         Ok(headers)
     }
 
-    fn add_header(&mut self, header: HttpHeader) {
+    pub fn add_header(&mut self, header: HttpHeader) {
         let name = header.field_name;
         let content = header.field_content;
-        // If the header already exists append the value separated by a comma.
-        // Excetp if the header is Set-Cookie:
-        // https://www.rfc-editor.org/rfc/rfc7230#section-3.2.2
+        let values = self.headers.entry(name).or_insert(Vec::new());
+        values.push(content);
+    }
 
-        match self.list.binary_search_by(|probe| probe.0.cmp(&name)) {
-            Err(i) => self.list.insert(i, (name, content)),
-            Ok(i) => {
-                if name == "Set-Cookie" {
-                    self.list.insert(i + 1, (name, content));
-                    return;
-                }
-                let old = &mut self.list[i];
-                old.1.push(',');
-                old.1.push_str(&content);
-            }
-        };
+    pub fn get(&self, name: &str) -> Option<&Vec<String>> {
+        self.headers.get(name)
+    }
+}
+
+impl Default for HttpHeaders {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

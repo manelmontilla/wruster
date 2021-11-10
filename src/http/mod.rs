@@ -1,6 +1,6 @@
 use std::collections::hash_map::HashMap;
 use std::io;
-use std::io::{Cursor, BufReader, prelude::*};
+use std::io::{prelude::*, BufReader, Cursor};
 
 use std::convert::Infallible;
 use std::error::Error;
@@ -28,10 +28,7 @@ pub struct Body {
 }
 
 impl Body {
-    pub fn write<T: io::Write>(
-        &mut self,
-        to: &mut T,
-    ) -> ServerResult {
+    pub fn write<T: io::Write>(&mut self, to: &mut T) -> ServerResult {
         let mut header = format!("Content-Type: {}\r\n", &self.content_type);
         if let Err(err) = to.write(header.as_bytes()) {
             return Err(Box::new(err));
@@ -43,11 +40,8 @@ impl Body {
         self.write_content(to)
     }
 
-    pub fn write_content<T: io::Write>(
-        &mut self,
-        to: &mut T,
-    ) -> ServerResult {
-       let src = &mut self.content;
+    pub fn write_content<T: io::Write>(&mut self, to: &mut T) -> ServerResult {
+        let src = &mut self.content;
         if let Err(err) = io::copy(src, to) {
             return Err(Box::new(err));
         };
@@ -57,10 +51,13 @@ impl Body {
 
 impl fmt::Debug for Body {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "content-type: {}, content-length: {}, content: ....", self.content_type, self.content_length)
+        write!(
+            f,
+            "content-type: {}, content-length: {}, content: ....",
+            self.content_type, self.content_length
+        )
     }
 }
-
 
 #[derive(Debug)]
 pub struct Response {
@@ -161,7 +158,7 @@ impl Request {
         let headers = HttpHeaders::read_from(&mut reader)?;
         debug!("headers parsed: {:?}", headers);
         // For a request to have body a Content-Length or Transfer-Enconding header must be present.
-        
+
         let request = Request {
             method: request_line.method,
             uri: request_line.uri,
@@ -177,7 +174,6 @@ impl Request {
         let mut reader = BufReader::new(from.as_bytes());
         Request::from(&mut reader)
     }
-
 }
 
 #[derive(Debug)]

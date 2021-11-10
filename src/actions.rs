@@ -3,7 +3,6 @@ use std::fs;
 use std::io::BufReader;
 use std::{io, path::PathBuf};
 
-
 use crate::http::{Body, Request, Response, StatusCode};
 
 pub fn serve_static(dir: &str, request: &Request) -> Response {
