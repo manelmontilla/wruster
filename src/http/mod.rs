@@ -160,7 +160,8 @@ impl Request {
         debug!("request line parsed: {:?}", request_line);
         let headers = HttpHeaders::read_from(&mut reader)?;
         debug!("headers parsed: {:?}", headers);
-        // For a request to have body a Content-Length or Transfer-Enconding header must be present.
+        // For a request to have body a Content-Length or Transfer-Enconding
+        // header must be present.
         
         let request = Request {
             method: request_line.method,
