@@ -83,7 +83,7 @@ fn http_headers_parse() {
         )
     );
 
-    // Multiple values for the same header are appended separated by a comma.
+    // Multiple values for the same header.
     let header_content = "header-one: value-one\r\nheader-one: value-two\r\n\r\n";
     let stream = &mut BufReader::new(header_content.as_bytes());
     let result = HttpHeaders::read_from(stream).unwrap();
