@@ -10,7 +10,7 @@ impl<T> Trie<T> {
     }
 
     pub fn add_value(&mut self, key: &[u8], value: T) {
-        assert!(key.is_empty());
+        assert!(!key.is_empty());
         Node::add_value_to_children(&mut self.children, key, value);
     }
 
