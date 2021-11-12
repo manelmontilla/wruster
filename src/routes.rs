@@ -74,10 +74,7 @@ impl MethodActions {
 
     fn get_action(&self, method: HttpMethod) -> Option<Arc<Action>> {
         let actions = self.actions.borrow();
-        match &actions[method as usize] {
-            None => None,
-            Some(action) => Some(Arc::clone(action)),
-        }
+        actions[method as usize].as_ref().map(|action| Arc::clone(action))
     }
 }
 

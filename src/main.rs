@@ -4,8 +4,6 @@ use std::process;
 #[macro_use]
 extern crate log;
 
-use env_logger;
-
 use wruster::actions;
 use wruster::http;
 use wruster::routes;
@@ -17,7 +15,7 @@ fn main() {
 
     let args: Vec<String> = env::args().collect();
     if args.len() != 3 {
-        eprintln!("error {}", "usage: wruster ip:port directory");
+        eprintln!("usage: wruster ip:port directory");
         process::exit(1);
     }
     let addr = &args[1];

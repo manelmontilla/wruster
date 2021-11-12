@@ -80,10 +80,7 @@ fn run_action(stream: &mut net::TcpStream, routes: Arc<Routes>) -> Response {
     let normalized = match req_path.normalize() {
         Ok(path) => path,
         Err(err) => {
-            let p = match req_path.to_str() {
-                Some(p) => p,
-                None => "unble to get path",
-            };
+            let p = req_path.to_str().unwrap_or("unble to get path");
             error!("error: parsing path {}, error info: {}", p, err);
             return Response::from_status(StatusCode::InternalServerError);
         }
