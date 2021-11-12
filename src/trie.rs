@@ -6,7 +6,7 @@ pub struct Trie<T> {
 impl<T> Trie<T> {
     pub fn new() -> Self {
         let children = Node::empty_children();
-        Trie { children: children }
+        Trie { children }
     }
 
     pub fn add_value(&mut self, key: &[u8], value: T) {
@@ -83,7 +83,7 @@ impl<T> Node<T> {
     fn new() -> Self {
         let children = Self::empty_children();
         Node {
-            children: children,
+            children,
             value: None,
         }
     }

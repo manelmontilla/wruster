@@ -50,6 +50,13 @@ impl Routes {
     }
 }
 
+impl Default for Routes {
+
+    fn default() -> Self {
+        Routes::new()
+    }
+}
+
 pub struct MethodActions {
     actions: AtomicRefCell<Vec<Option<Arc<Action>>>>,
 }

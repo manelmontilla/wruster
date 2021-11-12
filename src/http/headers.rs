@@ -51,7 +51,7 @@ impl HttpHeaders {
     pub fn add_header(&mut self, header: HttpHeader) {
         let name = header.field_name;
         let content = header.field_content;
-        let values = self.headers.entry(name).or_insert(Vec::new());
+        let values = self.headers.entry(name).or_insert_with(Vec::new);
         values.push(content);
     }
 
@@ -84,7 +84,7 @@ impl HttpHeader {
         let mut line = Vec::<u8>::new();
         loop {
             let mut header_chunk = Vec::<u8>::new();
-            if let Err(err) = from.read_until('\n' as u8, &mut header_chunk) {
+            if let Err(err) = from.read_until(b'\n', &mut header_chunk) {
                 return Err(ParseRequestError {
                     msg: err.to_string(),
                 });
@@ -94,7 +94,7 @@ impl HttpHeader {
             if len < 2 {
                 continue;
             }
-            if line[len - 1] == '\n' as u8 && line[len - 2] == '\r' as u8 {
+            if line[len - 1] == b'\n' && line[len - 2] == b'\r' {
                 break;
             }
         }
@@ -125,7 +125,7 @@ impl HttpHeader {
             name.push(c);
             i += 1;
         }
-        if name.len() < 1 {
+        if name.is_empty() {
             debug!(
                 "invalid header name line: {}, missing header name",
                 String::from_utf8_lossy(line)
@@ -135,7 +135,7 @@ impl HttpHeader {
             });
         };
         // After the token we MUST receive a colon.
-        if line[i] != ':' as u8 {
+        if line[i] != b':' {
             debug!(
                 "invalid header line: {}, missing semicolon",
                 String::from_utf8_lossy(line)
