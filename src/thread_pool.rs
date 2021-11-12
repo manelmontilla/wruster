@@ -1,7 +1,7 @@
 use std::sync::mpsc::{channel, Sender};
 use std::thread;
 
-type Action = Box<dyn FnOnce() -> () + Send>;
+type Action = Box<dyn FnOnce() + Send>;
 
 struct Worker {
     handle: Option<thread::JoinHandle<()>>,
@@ -55,7 +55,7 @@ impl Pool {
         Pool {
             size: n,
             next: 0,
-            workers: workers,
+            workers,
         }
     }
 
@@ -69,6 +69,7 @@ impl Drop for Pool {
     fn drop(&mut self) {
         let workers = &self.workers;
         for worker in &*workers {
+            #[allow(clippy::drop_ref)]
             drop(worker);
         }
     }

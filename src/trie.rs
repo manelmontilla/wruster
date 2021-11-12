@@ -6,16 +6,16 @@ pub struct Trie<T> {
 impl<T> Trie<T> {
     pub fn new() -> Self {
         let children = Node::empty_children();
-        Trie { children: children }
+        Trie { children }
     }
 
     pub fn add_value(&mut self, key: &[u8], value: T) {
-        assert!(key.len() > 0);
+        assert!(key.is_empty());
         Node::add_value_to_children(&mut self.children, key, value);
     }
 
     pub fn get_value(&self, key: &[u8]) -> Option<&T> {
-        if key.len() == 0 {
+        if key.is_empty() {
             return None;
         }
         let pos = key[0] as usize;
@@ -28,7 +28,7 @@ impl<T> Trie<T> {
     }
 
     pub fn move_value_out(&mut self, key: &[u8]) -> Option<T> {
-        if key.len() == 0 {
+        if key.is_empty() {
             return None;
         }
         let pos = key[0] as usize;
@@ -41,7 +41,7 @@ impl<T> Trie<T> {
     }
 
     pub fn get_value_prefix<'a>(&'a self, key: &[u8]) -> Option<&T> {
-        if key.len() == 0 {
+        if key.is_empty() {
             return None;
         }
         let pos = key[0] as usize;
@@ -71,7 +71,7 @@ impl<T> Node<T> {
 
     fn add_value_to_children(children: &mut Vec<Option<Node<T>>>, key: &[u8], value: T) {
         let next = key[0] as usize;
-        if let None = children[next] {
+        if children[next].is_none() {
             let new_node = Node::<T>::new();
             children[next] = Some(new_node);
         };
@@ -83,13 +83,13 @@ impl<T> Node<T> {
     fn new() -> Self {
         let children = Self::empty_children();
         Node {
-            children: children,
+            children,
             value: None,
         }
     }
 
     fn add_value(&mut self, key: &[u8], value: T) {
-        if key.len() == 0 {
+        if key.is_empty() {
             self.value = Some(value);
             return;
         }
@@ -97,7 +97,7 @@ impl<T> Node<T> {
     }
 
     fn get_value(&self, key: &[u8]) -> Option<&T> {
-        if key.len() == 0 {
+        if key.is_empty() {
             return self.value.as_ref();
         }
         let pos = key[0] as usize;
@@ -110,8 +110,8 @@ impl<T> Node<T> {
     }
 
     fn get_value_prefix<'a>(&'a self, key: &[u8], prefix_value: Option<&'a T>) -> Option<&T> {
-        if key.len() == 0 {
-            if let None = self.value {
+        if key.is_empty() {
+            if self.value.is_none() {
                 return prefix_value;
             }
             return self.value.as_ref();
@@ -120,7 +120,7 @@ impl<T> Node<T> {
         let children = &self.children;
         let child = match &children[pos] {
             None => {
-                if let Some(_) = self.value {
+                if  self.value.is_some() {
                     return self.value.as_ref();
                 }
                 return prefix_value;
@@ -135,7 +135,7 @@ impl<T> Node<T> {
     }
 
     pub fn move_value_out(&mut self, key: &[u8]) -> Option<T> {
-        if key.len() == 0 {
+        if key.is_empty() {
             return self.value.take();
         }
         let pos = key[0] as usize;

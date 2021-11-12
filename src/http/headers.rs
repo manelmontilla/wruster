@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::fmt;
 use std::fmt::Debug;
 use std::io;
@@ -8,12 +9,18 @@ use super::HttpMessageChar;
 
 #[derive(Debug)]
 pub struct HttpHeaders {
-    pub list: Vec<(String, String)>,
+    headers: HashMap<String, Vec<String>>,
 }
 
 impl HttpHeaders {
     pub fn new() -> HttpHeaders {
-        HttpHeaders { list: Vec::new() }
+        HttpHeaders {
+            headers: HashMap::new(),
+        }
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = (&String, &Vec<String>)> {
+        self.headers.iter()
     }
 
     pub fn read_from<T: io::Read>(
@@ -33,7 +40,6 @@ impl HttpHeaders {
                     break;
                 }
                 Some(header) => {
-                    // headers.list.push((header.field_name, header.field_content));
                     headers.add_header(header);
                 }
             };
@@ -42,25 +48,21 @@ impl HttpHeaders {
         Ok(headers)
     }
 
-    fn add_header(&mut self, header: HttpHeader) {
+    pub fn add_header(&mut self, header: HttpHeader) {
         let name = header.field_name;
         let content = header.field_content;
-        // If the header already exists append the value separated by a comma.
-        // Excetp if the header is Set-Cookie:
-        // https://www.rfc-editor.org/rfc/rfc7230#section-3.2.2
+        let values = self.headers.entry(name).or_insert_with(Vec::new);
+        values.push(content);
+    }
 
-        match self.list.binary_search_by(|probe| probe.0.cmp(&name)) {
-            Err(i) => self.list.insert(i, (name, content)),
-            Ok(i) => {
-                if name == "Set-Cookie" {
-                    self.list.insert(i + 1, (name, content));
-                    return;
-                }
-                let old = &mut self.list[i];
-                old.1.push(',');
-                old.1.push_str(&content);
-            }
-        };
+    pub fn get(&self, name: &str) -> Option<&Vec<String>> {
+        self.headers.get(name)
+    }
+}
+
+impl Default for HttpHeaders {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -82,7 +84,7 @@ impl HttpHeader {
         let mut line = Vec::<u8>::new();
         loop {
             let mut header_chunk = Vec::<u8>::new();
-            if let Err(err) = from.read_until('\n' as u8, &mut header_chunk) {
+            if let Err(err) = from.read_until(b'\n', &mut header_chunk) {
                 return Err(ParseRequestError {
                     msg: err.to_string(),
                 });
@@ -92,7 +94,7 @@ impl HttpHeader {
             if len < 2 {
                 continue;
             }
-            if line[len - 1] == '\n' as u8 && line[len - 2] == '\r' as u8 {
+            if line[len - 1] == b'\n' && line[len - 2] == b'\r' {
                 break;
             }
         }
@@ -123,7 +125,7 @@ impl HttpHeader {
             name.push(c);
             i += 1;
         }
-        if name.len() < 1 {
+        if name.is_empty() {
             debug!(
                 "invalid header name line: {}, missing header name",
                 String::from_utf8_lossy(line)
@@ -133,7 +135,7 @@ impl HttpHeader {
             });
         };
         // After the token we MUST receive a colon.
-        if line[i] != ':' as u8 {
+        if line[i] != b':' {
             debug!(
                 "invalid header line: {}, missing semicolon",
                 String::from_utf8_lossy(line)

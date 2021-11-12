@@ -3,7 +3,6 @@ use std::fs;
 use std::io::BufReader;
 use std::{io, path::PathBuf};
 
-
 use crate::http::{Body, Request, Response, StatusCode};
 
 pub fn serve_static(dir: &str, request: &Request) -> Response {
@@ -15,7 +14,7 @@ pub fn serve_static(dir: &str, request: &Request) -> Response {
         }
         uri = &uri[1..]
     }
-    let mut path = base_path.clone();
+    let mut path = base_path;
     path.push(uri);
 
     let metadata = match fs::metadata(&path) {
@@ -38,7 +37,7 @@ pub fn serve_static(dir: &str, request: &Request) -> Response {
         }
     };
     let mime_type = mime_guess::from_path(path).first_or_octet_stream();
-    let resp = Response {
+    Response {
         status: StatusCode::Ok,
         headers: HashMap::new(),
         body: Some(Body {
@@ -46,6 +45,5 @@ pub fn serve_static(dir: &str, request: &Request) -> Response {
             content_type: mime_type,
             content: Box::new(BufReader::new(content)),
         }),
-    };
-    resp
+    }
 }

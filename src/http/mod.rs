@@ -1,6 +1,6 @@
 use std::collections::hash_map::HashMap;
 use std::io;
-use std::io::{Cursor, BufReader, prelude::*};
+use std::io::{prelude::*, BufReader, Cursor};
 
 use std::convert::Infallible;
 use std::error::Error;
@@ -28,10 +28,7 @@ pub struct Body {
 }
 
 impl Body {
-    pub fn write<T: io::Write>(
-        &mut self,
-        to: &mut T,
-    ) -> ServerResult {
+    pub fn write<T: io::Write>(&mut self, to: &mut T) -> ServerResult {
         let mut header = format!("Content-Type: {}\r\n", &self.content_type);
         if let Err(err) = to.write(header.as_bytes()) {
             return Err(Box::new(err));
@@ -43,11 +40,8 @@ impl Body {
         self.write_content(to)
     }
 
-    pub fn write_content<T: io::Write>(
-        &mut self,
-        to: &mut T,
-    ) -> ServerResult {
-       let src = &mut self.content;
+    pub fn write_content<T: io::Write>(&mut self, to: &mut T) -> ServerResult {
+        let src = &mut self.content;
         if let Err(err) = io::copy(src, to) {
             return Err(Box::new(err));
         };
@@ -57,10 +51,13 @@ impl Body {
 
 impl fmt::Debug for Body {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "content-type: {}, content-length: {}, content: ....", self.content_type, self.content_length)
+        write!(
+            f,
+            "content-type: {}, content-length: {}, content: ....",
+            self.content_type, self.content_length
+        )
     }
 }
-
 
 #[derive(Debug)]
 pub struct Response {
@@ -85,7 +82,7 @@ impl Response {
                 return Err(Box::new(err));
             };
         }
-        if let None = self.body {
+        if self.body.is_none() {
             match to.write("\r\n".as_bytes()) {
                 Ok(_) => return Ok(()),
                 Err(err) => return Err(Box::new(err)),
@@ -97,7 +94,7 @@ impl Response {
 
     pub fn from_status(status: StatusCode) -> Response {
         Response {
-            status: status,
+            status,
             headers: HashMap::new(),
             body: None,
         }
@@ -162,7 +159,6 @@ impl Request {
         debug!("headers parsed: {:?}", headers);
         // For a request to have body a Content-Length or Transfer-Enconding
         // header must be present.
-        
         let request = Request {
             method: request_line.method,
             uri: request_line.uri,
@@ -173,12 +169,15 @@ impl Request {
         debug!("request parsed: {:?}", request);
         Ok(request)
     }
+}
 
-    pub fn from_str(from: &str) -> Result<Request, ParseRequestError> {
+impl FromStr for Request {
+    type Err = ParseRequestError;
+
+    fn from_str(from: &str) -> Result<Request, ParseRequestError> {
         let mut reader = BufReader::new(from.as_bytes());
         Request::from(&mut reader)
     }
-
 }
 
 #[derive(Debug)]
@@ -198,7 +197,7 @@ impl HttpRequestLine {
         // Parsing the request line this way is not fast, but the objective is
         // to make it clear not performant.
         let mut method = Vec::new();
-        if let Err(err) = from.read_until(' ' as u8, &mut method) {
+        if let Err(err) = from.read_until(b' ', &mut method) {
             return Err(ParseRequestError {
                 msg: err.to_string(),
             });
@@ -215,7 +214,7 @@ impl HttpRequestLine {
         };
 
         let mut uri = Vec::new();
-        if let Err(err) = from.read_until(' ' as u8, &mut uri) {
+        if let Err(err) = from.read_until(b' ', &mut uri) {
             return Err(ParseRequestError {
                 msg: err.to_string(),
             });
@@ -228,7 +227,7 @@ impl HttpRequestLine {
         let uri = String::from_utf8_lossy(&uri[..uri.len() - 1]);
 
         let mut version = Vec::new();
-        if let Err(err) = from.read_until('\n' as u8, &mut version) {
+        if let Err(err) = from.read_until(b'\n', &mut version) {
             return Err(ParseRequestError {
                 msg: err.to_string(),
             });
@@ -239,7 +238,7 @@ impl HttpRequestLine {
             });
         };
 
-        if version[version.len() - 2] != ('\r' as u8) {
+        if version[version.len() - 2] != (b'\r') {
             return Err(ParseRequestError {
                 msg: String::from("invalied request line"),
             });
@@ -247,7 +246,7 @@ impl HttpRequestLine {
         let version = String::from_utf8_lossy(&version[..version.len() - 2]);
 
         Ok(HttpRequestLine {
-            method: method,
+            method,
             uri: String::from(uri),
             version: String::from(version),
         })
@@ -303,31 +302,31 @@ impl FromStr for HttpMethod {
 impl fmt::Display for HttpMethod {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            &HttpMethod::CONNECT => write!(f, "CONNECT"),
-            &HttpMethod::DELETE => write!(f, "DELETE"),
-            &HttpMethod::GET => write!(f, "GET"),
-            &HttpMethod::HEAD => write!(f, "HEAD"),
-            &HttpMethod::OPTIONS => write!(f, "OPTIONS"),
-            &HttpMethod::PATCH => write!(f, "PATCH"),
-            &HttpMethod::POST => write!(f, "POST"),
-            &HttpMethod::PUT => write!(f, "PUT"),
-            &HttpMethod::TRACE => write!(f, "TRACE"),
+            HttpMethod::CONNECT => write!(f, "CONNECT"),
+            HttpMethod::DELETE => write!(f, "DELETE"),
+            HttpMethod::GET => write!(f, "GET"),
+            HttpMethod::HEAD => write!(f, "HEAD"),
+            HttpMethod::OPTIONS => write!(f, "OPTIONS"),
+            HttpMethod::PATCH => write!(f, "PATCH"),
+            HttpMethod::POST => write!(f, "POST"),
+            HttpMethod::PUT => write!(f, "PUT"),
+            HttpMethod::TRACE => write!(f, "TRACE"),
         }
     }
 }
 
 trait HttpMessageChar {
-    fn is_valid_token_char(self) -> bool;
+    fn is_valid_token_char(&self) -> bool;
 
-    fn is_valid_field_content(self) -> bool;
+    fn is_valid_field_content(&self) -> bool;
 
-    fn is_valid_vchar(self) -> bool;
+    fn is_valid_vchar(&self) -> bool;
 
-    fn is_optional_white_space(self) -> bool;
+    fn is_optional_white_space(&self) -> bool;
 }
 
 impl HttpMessageChar for char {
-    fn is_valid_token_char(self: char) -> bool {
+    fn is_valid_token_char(&self) -> bool {
         // We don't support non ascii chars in tokens.
         if !self.is_ascii() {
             return false;
@@ -341,25 +340,25 @@ impl HttpMessageChar for char {
         if valid_token_symbols.contains(&self) {
             return true;
         };
-        return false;
+        false
     }
 
-    fn is_valid_vchar(self) -> bool {
+    fn is_valid_vchar(&self) -> bool {
         // field-vchar    = VCHAR / obs-text
         if self.is_ascii_graphic() {
             return true;
         };
-        if self as u8 >= 0x80 {
+        if *self as u8 >= 0x80 {
             return true;
         };
-        return false;
+        false
     }
 
-    fn is_valid_field_content(self) -> bool {
+    fn is_valid_field_content(&self) -> bool {
         self.is_valid_vchar() || self.is_optional_white_space()
     }
 
-    fn is_optional_white_space(self) -> bool {
-        self == ' ' || self == '\t'
+    fn is_optional_white_space(&self) -> bool {
+        *self == ' ' || *self == '\t'
     }
 }
