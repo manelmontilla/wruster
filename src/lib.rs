@@ -11,9 +11,6 @@ pub mod http;
 pub mod router;
 mod thread_pool;
 
-#[cfg(test)]
-mod tests;
-
 use http::*;
 use router::{Normalize, Router};
 
