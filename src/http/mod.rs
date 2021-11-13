@@ -21,6 +21,124 @@ mod tests;
 
 pub type ServerResult = Result<(), Box<dyn Error>>;
 
+
+#[derive(Debug)]
+pub struct Request {
+    pub method: HttpMethod,
+    pub uri: String,
+    pub version: String,
+    pub headers: HttpHeaders,
+    pub body: Option<Body>,
+}
+
+impl Request {
+    pub fn from<T: io::Read>(from: &mut T) -> Result<Request, ParseRequestError> {
+        debug!("pasing request");
+        let mut reader = io::BufReader::new(from);
+        let request_line = match HttpRequestLine::read_from(&mut reader) {
+            Ok(request) => request,
+            Err(err) => return Err(err),
+        };
+        debug!("request line parsed: {:?}", request_line);
+        let headers = HttpHeaders::read_from(&mut reader)?;
+        debug!("headers parsed: {:?}", headers);
+        // For a request to have body a Content-Length or Transfer-Enconding
+        // header must be present.
+        let request = Request {
+            method: request_line.method,
+            uri: request_line.uri,
+            version: request_line.version,
+            headers,
+            body: None,
+        };
+        debug!("request parsed: {:?}", request);
+        Ok(request)
+    }
+}
+
+impl FromStr for Request {
+    type Err = ParseRequestError;
+
+    fn from_str(from: &str) -> Result<Request, ParseRequestError> {
+        let mut reader = BufReader::new(from.as_bytes());
+        Request::from(&mut reader)
+    }
+}
+
+#[derive(Debug)]
+struct HttpRequestLine {
+    method: HttpMethod,
+    uri: String,
+    version: String,
+}
+
+impl HttpRequestLine {
+    fn read_from<T: io::Read>(
+        from: &mut io::BufReader<T>,
+    ) -> Result<HttpRequestLine, ParseRequestError> {
+        // Request-Line   = Method SP Request-URI SP HTTP-Version CRLF
+        // https://www.w3.org/Protocols/rfc2616/rfc2616-sec5.html
+
+        // Parsing the request line this way is not fast, but the objective is
+        // to make it clear not performant.
+        let mut method = Vec::new();
+        if let Err(err) = from.read_until(b' ', &mut method) {
+            return Err(ParseRequestError {
+                msg: err.to_string(),
+            });
+        };
+        if method.len() < 2 {
+            return Err(ParseRequestError {
+                msg: String::from("invalied request line"),
+            });
+        };
+        let method = String::from_utf8_lossy(&method[..method.len() - 1]);
+        let method = match HttpMethod::from_str(&method) {
+            Err(err) => return Err(ParseRequestError { msg: err }),
+            Ok(method) => method,
+        };
+
+        let mut uri = Vec::new();
+        if let Err(err) = from.read_until(b' ', &mut uri) {
+            return Err(ParseRequestError {
+                msg: err.to_string(),
+            });
+        };
+        if uri.len() < 2 {
+            return Err(ParseRequestError {
+                msg: String::from("invalied request line"),
+            });
+        };
+        let uri = String::from_utf8_lossy(&uri[..uri.len() - 1]);
+
+        let mut version = Vec::new();
+        if let Err(err) = from.read_until(b'\n', &mut version) {
+            return Err(ParseRequestError {
+                msg: err.to_string(),
+            });
+        };
+        if version.len() < 3 {
+            return Err(ParseRequestError {
+                msg: String::from("invalied request line"),
+            });
+        };
+
+        if version[version.len() - 2] != (b'\r') {
+            return Err(ParseRequestError {
+                msg: String::from("invalied request line"),
+            });
+        }
+        let version = String::from_utf8_lossy(&version[..version.len() - 2]);
+
+        Ok(HttpRequestLine {
+            method,
+            uri: String::from(uri),
+            version: String::from(version),
+        })
+    }
+}
+
+
 pub struct Body {
     pub content_type: mime::Mime,
     pub content_length: u64,
@@ -134,122 +252,6 @@ impl fmt::Display for StatusCode {
             StatusCode::NotFound => write!(f, "404 Not found"),
             &StatusCode::BadRequest => write!(f, "400 Bad Request"),
         }
-    }
-}
-
-#[derive(Debug)]
-pub struct Request {
-    pub method: HttpMethod,
-    pub uri: String,
-    pub version: String,
-    pub headers: HttpHeaders,
-    pub body: Vec<u8>,
-}
-
-impl Request {
-    pub fn from<T: io::Read>(from: &mut T) -> Result<Request, ParseRequestError> {
-        debug!("pasing request");
-        let mut reader = io::BufReader::new(from);
-        let request_line = match HttpRequestLine::read_from(&mut reader) {
-            Ok(request) => request,
-            Err(err) => return Err(err),
-        };
-        debug!("request line parsed: {:?}", request_line);
-        let headers = HttpHeaders::read_from(&mut reader)?;
-        debug!("headers parsed: {:?}", headers);
-        // For a request to have body a Content-Length or Transfer-Enconding
-        // header must be present.
-        let request = Request {
-            method: request_line.method,
-            uri: request_line.uri,
-            version: request_line.version,
-            headers,
-            body: Vec::new(),
-        };
-        debug!("request parsed: {:?}", request);
-        Ok(request)
-    }
-}
-
-impl FromStr for Request {
-    type Err = ParseRequestError;
-
-    fn from_str(from: &str) -> Result<Request, ParseRequestError> {
-        let mut reader = BufReader::new(from.as_bytes());
-        Request::from(&mut reader)
-    }
-}
-
-#[derive(Debug)]
-struct HttpRequestLine {
-    method: HttpMethod,
-    uri: String,
-    version: String,
-}
-
-impl HttpRequestLine {
-    fn read_from<T: io::Read>(
-        from: &mut io::BufReader<T>,
-    ) -> Result<HttpRequestLine, ParseRequestError> {
-        // Request-Line   = Method SP Request-URI SP HTTP-Version CRLF
-        // https://www.w3.org/Protocols/rfc2616/rfc2616-sec5.html
-
-        // Parsing the request line this way is not fast, but the objective is
-        // to make it clear not performant.
-        let mut method = Vec::new();
-        if let Err(err) = from.read_until(b' ', &mut method) {
-            return Err(ParseRequestError {
-                msg: err.to_string(),
-            });
-        };
-        if method.len() < 2 {
-            return Err(ParseRequestError {
-                msg: String::from("invalied request line"),
-            });
-        };
-        let method = String::from_utf8_lossy(&method[..method.len() - 1]);
-        let method = match HttpMethod::from_str(&method) {
-            Err(err) => return Err(ParseRequestError { msg: err }),
-            Ok(method) => method,
-        };
-
-        let mut uri = Vec::new();
-        if let Err(err) = from.read_until(b' ', &mut uri) {
-            return Err(ParseRequestError {
-                msg: err.to_string(),
-            });
-        };
-        if uri.len() < 2 {
-            return Err(ParseRequestError {
-                msg: String::from("invalied request line"),
-            });
-        };
-        let uri = String::from_utf8_lossy(&uri[..uri.len() - 1]);
-
-        let mut version = Vec::new();
-        if let Err(err) = from.read_until(b'\n', &mut version) {
-            return Err(ParseRequestError {
-                msg: err.to_string(),
-            });
-        };
-        if version.len() < 3 {
-            return Err(ParseRequestError {
-                msg: String::from("invalied request line"),
-            });
-        };
-
-        if version[version.len() - 2] != (b'\r') {
-            return Err(ParseRequestError {
-                msg: String::from("invalied request line"),
-            });
-        }
-        let version = String::from_utf8_lossy(&version[..version.len() - 2]);
-
-        Ok(HttpRequestLine {
-            method,
-            uri: String::from(uri),
-            version: String::from(version),
-        })
     }
 }
 

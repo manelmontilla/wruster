@@ -126,8 +126,8 @@ impl Normalize for path::PathBuf {
 
 #[cfg(test)]
 mod tests {
-    use crate::http::headers::HttpHeaders;
-    use std::{path::PathBuf, str::FromStr};
+    use crate::http::{Body, headers::HttpHeaders};
+    use std::{io::Cursor, path::PathBuf, str::FromStr};
 
     use super::*;
     #[test]
@@ -160,14 +160,21 @@ mod tests {
     fn routes_add_and_get() {
         let routes = Router::new();
         let action = Box::new(|req: Request| {
-            let content = String::from_utf8_lossy(&req.body);
+            let mut content = String::new();
+            req.body.unwrap().content.read_to_string(&mut content).unwrap();
             Response::from_str(&content).unwrap()
         });
         routes.add("/a/b", HttpMethod::GET, action);
         let action = routes.get("/a/b", HttpMethod::GET);
         let action = action.unwrap();
+        let content = "content";
         let request = Request {
-            body: Vec::from("content"),
+            body: Some(
+                Body{
+                content: Box::new(Cursor::new(content)),
+                content_type: mime::TEXT_PLAIN,
+                content_length: content.len() as u64,
+            }),
             method: HttpMethod::POST,
             uri: String::from("/"),
             version: String::from("HTTP/1.1"),
