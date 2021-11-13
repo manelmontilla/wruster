@@ -32,7 +32,7 @@ pub struct Request {
 }
 
 impl Request {
-    pub fn from<T: io::Read>(from: &mut T) -> Result<Request, ParseRequestError> {
+    pub fn read_from<T: io::Read>(from: T) -> Result<Request, ParseRequestError> {
         debug!("pasing request");
         let mut reader = io::BufReader::new(from);
         let request_line = match HttpRequestLine::read_from(&mut reader) {
@@ -61,7 +61,7 @@ impl FromStr for Request {
 
     fn from_str(from: &str) -> Result<Request, ParseRequestError> {
         let mut reader = BufReader::new(from.as_bytes());
-        Request::from(&mut reader)
+        Request::read_from(&mut reader)
     }
 }
 

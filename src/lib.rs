@@ -65,7 +65,7 @@ fn handle_connection(mut stream: net::TcpStream, routes: Arc<Router>, source_add
 }
 
 fn run_action(stream: &mut net::TcpStream, routes: Arc<Router>) -> Response {
-    let mut request = match Request::from(stream) {
+    let mut request = match Request::read_from(stream) {
         Err(err) => {
             error!("error parsing request, error info: {}", err);
             return Response::from_status(StatusCode::BadRequest);
