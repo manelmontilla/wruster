@@ -6,7 +6,7 @@ extern crate log;
 
 use wruster::actions;
 use wruster::http;
-use wruster::routes;
+use wruster::router;
 
 use wruster::run_and_serve;
 
@@ -21,7 +21,7 @@ fn main() {
     let addr = &args[1];
     let dir = &args[2];
 
-    let routes = routes::Routes::new();
+    let routes = router::Router::new();
     let dir = dir.clone();
     let serve_dir = move |request| actions::serve_static(&dir, &request);
     routes.add("/", http::HttpMethod::GET, Box::new(serve_dir));

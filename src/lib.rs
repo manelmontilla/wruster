@@ -8,7 +8,7 @@ extern crate log;
 
 pub mod actions;
 pub mod http;
-pub mod routes;
+pub mod router;
 mod thread_pool;
 mod trie;
 
@@ -16,9 +16,9 @@ mod trie;
 mod tests;
 
 use http::*;
-use routes::{Normalize, Routes};
+use router::{Normalize, Router};
 
-pub fn run_and_serve(addr: &str, routes: Routes) -> ServerResult {
+pub fn run_and_serve(addr: &str, routes: Router) -> ServerResult {
     let listener = match net::TcpListener::bind(addr) {
         Ok(listener) => listener,
         Err(err) => return Err(Box::new(err)),
@@ -40,7 +40,7 @@ pub fn run_and_serve(addr: &str, routes: Routes) -> ServerResult {
     }
 }
 
-fn handle_connection(mut stream: net::TcpStream, routes: Arc<Routes>, source_addr: SocketAddr) {
+fn handle_connection(mut stream: net::TcpStream, routes: Arc<Router>, source_addr: SocketAddr) {
     let mut response = run_action(&mut stream, routes);
     // By now, we don't support keep alive connections.
     response.add_header(String::from("Connection"), String::from("Close"));
@@ -68,7 +68,7 @@ fn handle_connection(mut stream: net::TcpStream, routes: Arc<Routes>, source_add
     }
 }
 
-fn run_action(stream: &mut net::TcpStream, routes: Arc<Routes>) -> Response {
+fn run_action(stream: &mut net::TcpStream, routes: Arc<Router>) -> Response {
     let mut request = match Request::from(stream) {
         Err(err) => {
             error!("error parsing request, error info: {}", err);

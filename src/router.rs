@@ -6,32 +6,32 @@ use std::sync::Arc;
 use crate::trie::Trie;
 use crate::{HttpMethod, Request, Response};
 
-type Action = Box<dyn Fn(Request) -> Response + Send + Sync>;
+type HttpHandler = Box<dyn Fn(Request) -> Response + Send + Sync>;
 
-pub struct Routes {
-    routes: AtomicRefCell<Trie<MethodActions>>,
+pub struct Router {
+    routes: AtomicRefCell<Trie<MethodHandlers>>,
 }
 
-impl Routes {
-    pub fn new() -> Routes {
-        Routes {
+impl Router {
+    pub fn new() -> Router {
+        Router {
             routes: AtomicRefCell::new(Trie::new()),
         }
     }
 
-    pub fn add(&self, route: &str, method: HttpMethod, action: Action) {
+    pub fn add(&self, route: &str, method: HttpMethod, action: HttpHandler) {
         // We priorize keeping the code of the Trie simpler over adding the
         // routes faster.
         let mut routes = self.routes.borrow_mut();
-        let route_actions = match routes.move_value_out(route.as_bytes()) {
-            None => MethodActions::new(),
+        let router_handlers = match routes.move_value_out(route.as_bytes()) {
+            None => MethodHandlers::new(),
             Some(route_actions) => route_actions,
         };
-        route_actions.actions.borrow_mut()[method as usize] = Some(Arc::new(action));
-        routes.add_value(&route.as_bytes(), route_actions);
+        router_handlers.actions.borrow_mut()[method as usize] = Some(Arc::new(action));
+        routes.add_value(&route.as_bytes(), router_handlers);
     }
 
-    pub fn get(&self, route: &str, method: HttpMethod) -> Option<Arc<Action>> {
+    pub fn get(&self, route: &str, method: HttpMethod) -> Option<Arc<HttpHandler>> {
         let routes = self.routes.borrow();
         let method_actions = match routes.get_value(route.as_bytes()) {
             None => return None,
@@ -40,7 +40,7 @@ impl Routes {
         method_actions.get_action(method)
     }
 
-    pub fn get_prefix(&self, route: String, method: HttpMethod) -> Option<Arc<Action>> {
+    pub fn get_prefix(&self, route: String, method: HttpMethod) -> Option<Arc<HttpHandler>> {
         let routes = self.routes.borrow();
         let method_actions = match routes.get_value_prefix(route.as_bytes()) {
             None => return None,
@@ -50,37 +50,37 @@ impl Routes {
     }
 }
 
-impl Default for Routes {
+impl Default for Router {
 
     fn default() -> Self {
-        Routes::new()
+        Router::new()
     }
 }
 
-pub struct MethodActions {
-    actions: AtomicRefCell<Vec<Option<Arc<Action>>>>,
+pub struct MethodHandlers {
+    actions: AtomicRefCell<Vec<Option<Arc<HttpHandler>>>>,
 }
 
-impl MethodActions {
-    fn new() -> MethodActions {
-        let mut actions = Vec::<Option<Arc<Action>>>::new();
+impl MethodHandlers {
+    fn new() -> MethodHandlers {
+        let mut actions = Vec::<Option<Arc<HttpHandler>>>::new();
         for _ in 0..HttpMethod::get_last() as usize + 1 {
             actions.push(None);
         }
-        MethodActions {
+        MethodHandlers {
             actions: AtomicRefCell::new(actions),
         }
     }
 
-    fn get_action(&self, method: HttpMethod) -> Option<Arc<Action>> {
+    fn get_action(&self, method: HttpMethod) -> Option<Arc<HttpHandler>> {
         let actions = self.actions.borrow();
         actions[method as usize].as_ref().map(|action| Arc::clone(action))
     }
 }
 
-pub struct RouteAction {
+pub struct MethodHanlder {
     pub method: HttpMethod,
-    pub action: Action,
+    pub action: HttpHandler,
 }
 
 pub trait Normalize

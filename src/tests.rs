@@ -3,7 +3,7 @@ use std::str::FromStr;
 
 use crate::http::headers::*;
 use crate::http::*;
-use crate::routes::*;
+use crate::router::*;
 use crate::trie::*;
 
 #[test]
@@ -34,7 +34,7 @@ fn normalizes_path() {
 
 #[test]
 fn routes_add_and_get() {
-    let routes = Routes::new();
+    let routes = Router::new();
     let action = Box::new(|req: Request| {
         let content = String::from_utf8_lossy(&req.body);
         Response::from_str(&content).unwrap()
