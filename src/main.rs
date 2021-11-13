@@ -4,7 +4,7 @@ use std::process;
 #[macro_use]
 extern crate log;
 
-use wruster::actions;
+use wruster::handlers;
 use wruster::http;
 use wruster::router;
 
@@ -23,7 +23,7 @@ fn main() {
 
     let routes = router::Router::new();
     let dir = dir.clone();
-    let serve_dir = move |request| actions::serve_static(&dir, &request);
+    let serve_dir = move |request| handlers::serve_static(&dir, &request);
     routes.add("/", http::HttpMethod::GET, Box::new(serve_dir));
     if let Err(err) = run_and_serve(addr, routes) {
         error!("error running wruster {}", err.to_string());

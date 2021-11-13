@@ -120,7 +120,7 @@ impl<T> Node<T> {
         let children = &self.children;
         let child = match &children[pos] {
             None => {
-                if  self.value.is_some() {
+                if self.value.is_some() {
                     return self.value.as_ref();
                 }
                 return prefix_value;
@@ -158,5 +158,51 @@ mod tests {
         let index = "/a/b/c".as_bytes();
         root.add_value(index, "a");
         println!("value {:?}", root.get_value("/a".as_bytes()));
+    }
+
+    #[test]
+    fn trie_add_key_and_values() {
+        let mut root = Trie::<Box<dyn Fn(String) -> String>>::new();
+        let key = "/a/b/c".as_bytes();
+        let action = |param| {
+            println!("action executed with param {}", param);
+            String::from(param)
+        };
+        root.add_value(key, Box::new(action));
+        let action = root.get_value(key);
+        let resp = action.unwrap()(String::from("value passed"));
+        assert_eq!(resp, "value passed");
+    }
+
+    #[test]
+    fn trie_find_prefix() {
+        let mut root = Trie::<String>::new();
+        let mut key = "/a/b/c/d".as_bytes();
+        let mut value = String::from("action for route /a/b/c/d");
+        root.add_value(key, value);
+
+        key = "/a/b".as_bytes();
+        value = String::from("action for route /a/b");
+        root.add_value(key, value);
+
+        let value = root.get_value_prefix("/d".as_bytes());
+        assert!(value.is_none());
+
+        let value = root.get_value_prefix("/a/b/c".as_bytes());
+        assert_eq!(value.unwrap(), "action for route /a/b");
+
+        let value = root.get_value_prefix("/a/b/c/d".as_bytes());
+        assert_eq!(value.unwrap(), "action for route /a/b/c/d");
+    }
+
+    #[test]
+    fn trie_find_prefix_root() {
+        let mut root = Trie::<String>::new();
+        let key = "/".as_bytes();
+        let value = String::from("action for route /");
+        root.add_value(key, value);
+        println!("{:?}", root);
+        let value = root.get_value_prefix("/example".as_bytes());
+        assert_eq!(value.unwrap(), "action for route /");
     }
 }

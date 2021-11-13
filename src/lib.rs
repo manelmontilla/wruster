@@ -6,11 +6,10 @@ use std::{io::prelude::*, net::SocketAddr};
 #[macro_use]
 extern crate log;
 
-pub mod actions;
+pub mod handlers;
 pub mod http;
 pub mod router;
 mod thread_pool;
-mod trie;
 
 #[cfg(test)]
 mod tests;

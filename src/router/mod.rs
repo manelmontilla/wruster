@@ -3,8 +3,9 @@ use std::path;
 use std::path::Component;
 use std::sync::Arc;
 
-use crate::trie::Trie;
+mod trie;
 use crate::{HttpMethod, Request, Response};
+use trie::Trie;
 
 type HttpHandler = Box<dyn Fn(Request) -> Response + Send + Sync>;
 
@@ -51,7 +52,6 @@ impl Router {
 }
 
 impl Default for Router {
-
     fn default() -> Self {
         Router::new()
     }
@@ -74,7 +74,9 @@ impl MethodHandlers {
 
     fn get_action(&self, method: HttpMethod) -> Option<Arc<HttpHandler>> {
         let actions = self.actions.borrow();
-        actions[method as usize].as_ref().map(|action| Arc::clone(action))
+        actions[method as usize]
+            .as_ref()
+            .map(|action| Arc::clone(action))
     }
 }
 
@@ -119,5 +121,62 @@ impl Normalize for path::PathBuf {
             };
         }
         Ok(normalized)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::http::headers::HttpHeaders;
+    use std::{path::PathBuf, str::FromStr};
+
+    use super::*;
+    #[test]
+    fn normalizes_path() {
+        // Returns error if the path is not absolute.
+        let p = PathBuf::from("a/..");
+        assert_eq!(Err("invalid path"), p.normalize());
+
+        // Returns error if path is above the root.
+        let p = PathBuf::from("/../a/..");
+        assert_eq!(Err("invalid path"), p.normalize());
+
+        // Normalizes the path properly.
+        let p = PathBuf::from("/a/../b//.././");
+        let res: PathBuf = [r"/"].iter().collect();
+        assert_eq!(Ok(res), p.normalize());
+
+        // Normalizes the path properly.
+        let p = PathBuf::from("/a/../b/c/.././");
+        let res: PathBuf = [r"/b"].iter().collect();
+        assert_eq!(Ok(res), p.normalize());
+
+        // Removes an ending separator.
+        let p = PathBuf::from("/a/");
+        let res: PathBuf = [r"/a"].iter().collect();
+        assert_eq!(Ok(res), p.normalize());
+    }
+
+    #[test]
+    fn routes_add_and_get() {
+        let routes = Router::new();
+        let action = Box::new(|req: Request| {
+            let content = String::from_utf8_lossy(&req.body);
+            Response::from_str(&content).unwrap()
+        });
+        routes.add("/a/b", HttpMethod::GET, action);
+        let action = routes.get("/a/b", HttpMethod::GET);
+        let action = action.unwrap();
+        let request = Request {
+            body: Vec::from("content"),
+            method: HttpMethod::POST,
+            uri: String::from("/"),
+            version: String::from("HTTP/1.1"),
+            headers: HttpHeaders::new(),
+        };
+        let resp = action(request);
+        let mut resp_body = resp.body.unwrap();
+        let mut content = Vec::<u8>::new();
+        resp_body.write_content(&mut content).unwrap();
+        assert_eq!(Vec::from("content"), content);
     }
 }
