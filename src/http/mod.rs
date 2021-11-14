@@ -164,7 +164,7 @@ impl<'a> Body<'a> {
         Ok(())
     }
 
-    pub fn read_from<T: io::Read>(
+    pub fn read_from<T: io::Read + 'a>(
         from: T,
         headers: HttpHeaders,
     ) -> Result<Option<Body<'a>>, ParseRequestError> {
@@ -191,15 +191,22 @@ impl<'a> Body<'a> {
             }
         };
 
-        // let len = match usize::from_str(len) {
-        //     Err(err) => {
-        //         let msg = format!("invalid Content-Length header, {}", err.to_string());
-        //         return Err(ParseRequestError { msg });
-        //     }
-        //     Ok(size) => size,
-        // };
-
-        return Ok(None);
+        let len = match usize::from_str(len) {
+            Err(err) => {
+                let msg = format!("invalid Content-Length header, {}", err.to_string());
+                return Err(ParseRequestError { msg });
+            }
+            Ok(size) => size,
+        };
+        let c = from.take(len as u64);
+        let body = Body{
+            content: Box::new(c),
+            content_length: len as u64,
+            content_type: mime::TEXT_PLAIN,
+        };
+        Ok(Some(
+            body
+        ))
     }
 
     pub fn read_from_len<T: io::Read>(
