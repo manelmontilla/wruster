@@ -31,7 +31,7 @@ pub struct Request<'a> {
 }
 
 impl<'a> Request<'a> {
-    pub fn read_from<T: io::Read>(from: T) -> Result<Request<'a>, ParseRequestError> {
+    pub fn read_from<T: io::Read + 'a>(from: T) -> Result<Request<'a>, ParseRequestError> {
         debug!("pasing request");
         let mut reader = io::BufReader::new(from);
         let request_line = match HttpRequestLine::read_from(&mut reader) {
@@ -41,26 +41,22 @@ impl<'a> Request<'a> {
         debug!("request line parsed: {:?}", request_line);
         let headers = HttpHeaders::read_from(&mut reader)?;
         debug!("headers parsed: {:?}", headers);
-        // For a request to have body a Content-Length or Transfer-Enconding
-        // header must be present.
+        
+        let body = Body::read_from(reader, &headers)?;
+
         let request = Request {
             method: request_line.method,
             uri: request_line.uri,
             version: request_line.version,
             headers,
-            body: None,
+            body,
         };
         debug!("request parsed: {:?}", request);
         Ok(request)
     }
-}
 
-impl<'a> FromStr for Request<'a> {
-    type Err = ParseRequestError;
-
-    fn from_str(from: &str) -> Result<Request<'a>, ParseRequestError> {
-        let mut reader = BufReader::new(from.as_bytes());
-        Request::read_from(&mut reader)
+    fn from_str<'b>(from: &'b str) -> Result<Request<'b>, ParseRequestError> {
+        Request::read_from(Cursor::new(from))
     }
 }
 
@@ -166,7 +162,7 @@ impl<'a> Body<'a> {
 
     pub fn read_from<T: io::Read + 'a>(
         from: T,
-        headers: HttpHeaders,
+        headers: &HttpHeaders,
     ) -> Result<Option<Body<'a>>, ParseRequestError> {
         if let Some(encoding) = headers.get("Transfer-Enconding") {
             // Transfer-Enconding entity is not supported.

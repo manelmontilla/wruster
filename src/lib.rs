@@ -41,7 +41,8 @@ fn handle_connection(mut stream: net::TcpStream, routes: Arc<Router>, source_add
     let mut response = run_action(&stream, routes);
     // By now, we don't support keep alive connections.
     response.add_header(String::from("Connection"), String::from("Close"));
-    if let Err(err) = response.write(&mut stream) {
+    let mut resp_stream = stream.try_clone().unwrap();
+    if let Err(err) = response.write(&mut resp_stream) {
         error!(
             "error writing response to: {}, error info: {}",
             source_addr, err
@@ -49,7 +50,7 @@ fn handle_connection(mut stream: net::TcpStream, routes: Arc<Router>, source_add
         return;
     }
 
-    if let Err(err) = stream.flush() {
+    if let Err(err) =  resp_stream.flush() {
         error!(
             "error flusing stream to: {}, error info: {}",
             source_addr, err
@@ -65,7 +66,7 @@ fn handle_connection(mut stream: net::TcpStream, routes: Arc<Router>, source_add
     }
 }
 
-fn run_action(stream: &net::TcpStream, routes: Arc<Router>) -> Response<'static> {
+fn run_action<'a>(stream: &'a net::TcpStream, routes: Arc<Router>) -> Response<'a> {
     let mut request = match Request::read_from(stream) {
         Err(err) => {
             error!("error parsing request, error info: {}", err);
