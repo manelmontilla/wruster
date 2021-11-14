@@ -1,14 +1,15 @@
 use std::env;
 use std::process;
 
-#[macro_use]
-extern crate log;
-
 use wruster::handlers;
 use wruster::http;
 use wruster::router;
 
+use wruster::router::HttpHandler;
 use wruster::run_and_serve;
+
+#[macro_use]
+extern crate log;
 
 fn main() {
     env_logger::init();
@@ -23,7 +24,7 @@ fn main() {
 
     let routes = router::Router::new();
     let dir = dir.clone();
-    let serve_dir = move |request| handlers::serve_static(&dir, &request);
+    let serve_dir: HttpHandler = Box::new(move |request| handlers::serve_static(&dir, &request));
     routes.add("/", http::HttpMethod::GET, Box::new(serve_dir));
     if let Err(err) = run_and_serve(addr, routes) {
         error!("error running wruster {}", err.to_string());

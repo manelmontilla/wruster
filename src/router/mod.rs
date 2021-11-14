@@ -7,7 +7,7 @@ mod trie;
 use crate::{HttpMethod, Request, Response};
 use trie::Trie;
 
-type HttpHandler = Box<dyn Fn(Request) -> Response + Send + Sync>;
+pub type HttpHandler = Box<dyn Fn(Request) -> Response + Send + Sync>;
 
 pub struct Router {
     routes: AtomicRefCell<Trie<MethodHandlers>>,
@@ -126,7 +126,7 @@ impl Normalize for path::PathBuf {
 
 #[cfg(test)]
 mod tests {
-    use crate::http::{Body, headers::HttpHeaders};
+    use crate::http::{headers::HttpHeaders, Body};
     use std::{io::Cursor, path::PathBuf, str::FromStr};
 
     use super::*;
@@ -159,9 +159,13 @@ mod tests {
     #[test]
     fn routes_add_and_get() {
         let routes = Router::new();
-        let action = Box::new(|req: Request| {
-            let mut content = String::new();
-            req.body.unwrap().content.read_to_string(&mut content).unwrap();
+        let action: Box<dyn Fn(Request) -> Response + Sync + Send> = Box::new(|req: Request| {
+            let mut content = String::from("content");
+            req.body
+                .unwrap()
+                .content
+                .read_to_string(&mut content)
+                .unwrap();
             Response::from_str(&content).unwrap()
         });
         routes.add("/a/b", HttpMethod::GET, action);
@@ -169,8 +173,7 @@ mod tests {
         let action = action.unwrap();
         let content = "content";
         let request = Request {
-            body: Some(
-                Body{
+            body: Some(Body {
                 content: Box::new(Cursor::new(content)),
                 content_type: mime::TEXT_PLAIN,
                 content_length: content.len() as u64,

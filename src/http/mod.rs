@@ -21,18 +21,17 @@ mod tests;
 
 pub type ServerResult = Result<(), Box<dyn Error>>;
 
-
 #[derive(Debug)]
-pub struct Request {
+pub struct Request<'a> {
     pub method: HttpMethod,
     pub uri: String,
     pub version: String,
     pub headers: HttpHeaders,
-    pub body: Option<Body>,
+    pub body: Option<Body<'a>>,
 }
 
-impl Request {
-    pub fn read_from<T: io::Read>(from: T) -> Result<Request, ParseRequestError> {
+impl<'a> Request<'a> {
+    pub fn read_from<T: io::Read>(from: T) -> Result<Request<'a>, ParseRequestError> {
         debug!("pasing request");
         let mut reader = io::BufReader::new(from);
         let request_line = match HttpRequestLine::read_from(&mut reader) {
@@ -56,10 +55,10 @@ impl Request {
     }
 }
 
-impl FromStr for Request {
+impl<'a> FromStr for Request<'a> {
     type Err = ParseRequestError;
 
-    fn from_str(from: &str) -> Result<Request, ParseRequestError> {
+    fn from_str(from: &str) -> Result<Request<'a>, ParseRequestError> {
         let mut reader = BufReader::new(from.as_bytes());
         Request::read_from(&mut reader)
     }
@@ -138,14 +137,13 @@ impl HttpRequestLine {
     }
 }
 
-
-pub struct Body {
+pub struct Body<'a> {
     pub content_type: mime::Mime,
     pub content_length: u64,
-    pub content: Box<dyn Read>,
+    pub content: Box<dyn Read + 'a>,
 }
 
-impl Body {
+impl<'a> Body<'a> {
     pub fn write<T: io::Write>(&mut self, to: &mut T) -> ServerResult {
         let mut header = format!("Content-Type: {}\r\n", &self.content_type);
         if let Err(err) = to.write(header.as_bytes()) {
@@ -165,9 +163,61 @@ impl Body {
         };
         Ok(())
     }
+
+    pub fn read_from<T: io::Read>(
+        from: T,
+        headers: HttpHeaders,
+    ) -> Result<Option<Body<'a>>, ParseRequestError> {
+        if let Some(encoding) = headers.get("Transfer-Enconding") {
+            // Transfer-Enconding entity is not supported.
+            if encoding.len() != 1 {
+                let msg = format!("invalid Transfer-Enconding header");
+                return Err(ParseRequestError { msg });
+            }
+            if encoding[0] != "identity" {
+                let msg = format!("Transfer-Encoding: {} is not supported", encoding[0]);
+                return Err(ParseRequestError { msg });
+            }
+        };
+
+        let len = match headers.get("Content-Length") {
+            None => return Ok(None),
+            Some(lengths) => {
+                if lengths.len() != 1 {
+                    let msg = String::from("invalid Content-Length header");
+                    return Err(ParseRequestError { msg });
+                }
+                &lengths[0]
+            }
+        };
+
+        // let len = match usize::from_str(len) {
+        //     Err(err) => {
+        //         let msg = format!("invalid Content-Length header, {}", err.to_string());
+        //         return Err(ParseRequestError { msg });
+        //     }
+        //     Ok(size) => size,
+        // };
+
+        return Ok(None);
+    }
+
+    pub fn read_from_len<T: io::Read>(
+        from: &'a mut T,
+        mtype: mime::Mime,
+        len: u64,
+    ) -> Result<Option<Body>, ParseRequestError> {
+        let content = Box::new(from.take(len));
+        let body = Body {
+            content,
+            content_length: len,
+            content_type: mtype,
+        };
+        Ok(Some(body))
+    }
 }
 
-impl fmt::Debug for Body {
+impl fmt::Debug for Body<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
@@ -178,13 +228,13 @@ impl fmt::Debug for Body {
 }
 
 #[derive(Debug)]
-pub struct Response {
+pub struct Response<'a> {
     pub status: StatusCode,
     pub headers: HashMap<String, String>,
-    pub body: Option<Body>,
+    pub body: Option<Body<'a>>,
 }
 
-impl Response {
+impl<'a> Response<'a> {
     pub fn add_header(&mut self, name: String, value: String) {
         self.headers.insert(name, value);
     }
@@ -210,7 +260,7 @@ impl Response {
         body.write(to)
     }
 
-    pub fn from_status(status: StatusCode) -> Response {
+    pub fn from_status(status: StatusCode) -> Response<'a> {
         Response {
             status,
             headers: HashMap::new(),
@@ -219,9 +269,9 @@ impl Response {
     }
 }
 
-impl FromStr for Response {
+impl<'a> FromStr for Response<'a> {
     type Err = ParseError;
-    fn from_str(content: &str) -> Result<Response, Infallible> {
+    fn from_str(content: &str) -> Result<Response<'a>, Infallible> {
         let content = Vec::from(content);
         let resp = Response {
             status: StatusCode::Ok,
