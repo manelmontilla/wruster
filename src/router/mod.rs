@@ -160,7 +160,7 @@ mod tests {
     fn routes_add_and_get() {
         let routes = Router::new();
         let action: Box<dyn Fn(Request) -> Response + Sync + Send> = Box::new(|req: Request| {
-            let mut content = String::from("content");
+            let mut content = String::new();
             req.body
                 .unwrap()
                 .content
@@ -187,6 +187,7 @@ mod tests {
         let mut resp_body = resp.body.unwrap();
         let mut content = Vec::<u8>::new();
         resp_body.write_content(&mut content).unwrap();
+        println!("got {}", String::from_utf8_lossy(&content));
         assert_eq!(Vec::from("content"), content);
     }
 }
