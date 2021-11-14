@@ -47,3 +47,15 @@ pub fn serve_static(dir: &str, request: &Request) -> Response<'static> {
         }),
     }
 }
+
+
+
+pub fn log_request(request: &Request) -> Response<'static> {
+    info!("request {:?}", request);
+    if let Some(body) = request.body.as_mut() {
+      let mut content = String::new();
+      body.content.read_to_string(&mut content);
+      info!("request body: {}", content);
+    }
+    Response::from_status(StatusCode::Ok)
+}

@@ -43,6 +43,7 @@ impl<'a> Request<'a> {
         debug!("headers parsed: {:?}", headers);
 
         let body = Body::read_from(reader, &headers)?;
+        debug!("body read, length: {:?}", body);
 
         let request = Request {
             method: request_line.method,
