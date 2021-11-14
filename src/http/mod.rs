@@ -41,7 +41,7 @@ impl<'a> Request<'a> {
         debug!("request line parsed: {:?}", request_line);
         let headers = HttpHeaders::read_from(&mut reader)?;
         debug!("headers parsed: {:?}", headers);
-        
+
         let body = Body::read_from(reader, &headers)?;
 
         let request = Request {
