@@ -5,7 +5,7 @@ use std::{io, path::PathBuf};
 
 use crate::http::{Body, Request, Response, StatusCode};
 
-pub fn serve_static<'a, 'b, 'c>(dir: &'b str, request: &'a Request) -> Response<'c> {
+pub fn serve_static(dir: &str, request: &Request) -> Response<'static> {
     let base_path: PathBuf = PathBuf::from(dir).canonicalize().unwrap();
     let mut uri = request.uri.as_str();
     if uri.starts_with('/') {
