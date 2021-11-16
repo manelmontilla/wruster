@@ -27,7 +27,7 @@ fn main() {
     let dir = dir.clone();
     let serve_dir: HttpHandler = Box::new(move |request| handlers::serve_static(&dir, &request));
     routes.add("/", http::HttpMethod::GET, Box::new(serve_dir));
-    routes.add("/post", http::HttpMethod::POST, Box::new(|request| log_request(&request)));
+    routes.add("/post", http::HttpMethod::POST, Box::new(|request| log_request(request)));
     if let Err(err) = run_and_serve(addr, routes) {
         error!("error running wruster {}", err.to_string());
         process::exit(1);

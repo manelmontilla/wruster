@@ -206,11 +206,11 @@ impl<'a> Body<'a> {
         ))
     }
 
-    pub fn read_from_len<T: io::Read>(
-        from: &'a mut T,
+    pub fn read_from_len(
+        from: impl Read + 'a,
         mtype: mime::Mime,
         len: u64,
-    ) -> Result<Option<Body>, ParseRequestError> {
+    ) -> Result<Option<Body<'a>>, ParseRequestError> {
         let content = Box::new(from.take(len));
         let body = Body {
             content,
