@@ -106,6 +106,6 @@ Content-Length: 4\r\n\
 test";
 
     let req = Request::from_str(str_req).unwrap();
-    assert_eq!(req.uri,"/file");
+    assert_eq!(req.uri, "/file");
     assert_eq!(req.method, HttpMethod::POST);
 }
