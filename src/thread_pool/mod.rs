@@ -91,8 +91,7 @@ mod tests {
             *str_result = String::from("done");
         };
         pool.run(Box::new(action));
-        // Droping the pool forces to be sure the action send to the pool is
-        // already done.
+        // Droping the pool ensures the action is finished.
         drop(pool);
         let result = &*result.lock().unwrap();
         assert_eq!(result, "done");
