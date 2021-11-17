@@ -1,6 +1,6 @@
 use std::collections::hash_map::HashMap;
 use std::io;
-use std::io::{prelude::*, BufReader, Cursor};
+use std::io::{prelude::*, Cursor};
 
 use std::convert::Infallible;
 use std::error::Error;
@@ -329,7 +329,7 @@ impl HttpMethod {
 
 impl PartialEq for HttpMethod {
     fn eq(&self, other: &Self) -> bool {
-        self == other
+        self.to_string() == other.to_string()
     }
 }
 impl Eq for HttpMethod {}

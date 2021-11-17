@@ -97,3 +97,15 @@ fn http_headers_parse() {
         )
     );
 }
+
+#[test]
+fn http_request_from_str() {
+    let str_req = "POST /file HTTP/1.1\r\n\
+Content-Length: 4\r\n\
+\r\n\
+test";
+
+    let req = Request::from_str(str_req).unwrap();
+    assert_eq!(req.uri,"/file");
+    assert_eq!(req.method, HttpMethod::POST);
+}

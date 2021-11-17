@@ -37,7 +37,7 @@ pub fn run_and_serve(addr: &str, routes: Router) -> ServerResult {
     }
 }
 
-fn handle_connection(mut stream: net::TcpStream, routes: Arc<Router>, source_addr: SocketAddr) {
+fn handle_connection(stream: net::TcpStream, routes: Arc<Router>, source_addr: SocketAddr) {
     let mut response = run_action(&stream, routes);
     // By now, we don't support keep alive connections.
     response.add_header(String::from("Connection"), String::from("Close"));
