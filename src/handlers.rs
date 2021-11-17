@@ -48,8 +48,6 @@ pub fn serve_static(dir: &str, request: &Request) -> Response<'static> {
     }
 }
 
-
-
 pub fn log_request(mut request: Request) -> Response<'static> {
     info!("request {:?}", request);
     if let Some(body) = request.body.as_mut() {
