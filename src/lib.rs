@@ -50,7 +50,7 @@ fn handle_connection(mut stream: net::TcpStream, routes: Arc<Router>, source_add
         return;
     }
 
-    if let Err(err) =  resp_stream.flush() {
+    if let Err(err) = resp_stream.flush() {
         error!(
             "error flusing stream to: {}, error info: {}",
             source_addr, err

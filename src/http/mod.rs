@@ -196,14 +196,12 @@ impl<'a> Body<'a> {
             Ok(size) => size,
         };
         let c = from.take(len as u64);
-        let body = Body{
+        let body = Body {
             content: Box::new(c),
             content_length: len as u64,
             content_type: mime::TEXT_PLAIN,
         };
-        Ok(Some(
-            body
-        ))
+        Ok(Some(body))
     }
 
     pub fn read_from_len(
