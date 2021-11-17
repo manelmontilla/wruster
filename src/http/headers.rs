@@ -82,6 +82,7 @@ impl HttpHeaders {
         if let Err(err) = written {
             return Err(Box::new(err));
         };
+        Ok(())
     }
 }
 
