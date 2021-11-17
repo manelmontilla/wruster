@@ -232,7 +232,7 @@ impl fmt::Debug for Body<'_> {
 #[derive(Debug)]
 pub struct Response<'a> {
     pub status: StatusCode,
-    pub headers: HashMap<String, String>,
+    pub headers: HttpHeaders,
     pub body: Option<Body<'a>>,
 }
 
@@ -302,7 +302,7 @@ impl fmt::Display for StatusCode {
             StatusCode::Ok => write!(f, "200 OK"),
             StatusCode::InternalServerError => write!(f, "500 Internal Server Error"),
             StatusCode::NotFound => write!(f, "404 Not found"),
-            &StatusCode::BadRequest => write!(f, "400 Bad Request"),
+            StatusCode::BadRequest => write!(f, "400 Bad Request"),
         }
     }
 }
@@ -332,6 +332,7 @@ impl PartialEq for HttpMethod {
         self.to_string() == other.to_string()
     }
 }
+
 impl Eq for HttpMethod {}
 
 impl FromStr for HttpMethod {

@@ -6,6 +6,7 @@ use std::io::prelude::*;
 
 use super::errors::*;
 use super::HttpMessageChar;
+use super::ServerResult;
 
 #[derive(Debug)]
 pub struct HttpHeaders {
@@ -57,6 +58,30 @@ impl HttpHeaders {
 
     pub fn get(&self, name: &str) -> Option<&Vec<String>> {
         self.headers.get(name)
+    }
+
+    pub fn write<T: io::Write>(&self, to: &mut T) -> ServerResult {
+        // https://www.w3.org/Protocols/rfc2616/rfc2616-sec4.html#sec4.5:
+        // generic-message = start-line
+        //                   *(message-header CRLF)
+        //                   CRLF
+        //                   [ message-body ]
+        for h in self.iter() {
+            let name = h.0.clone();
+            for content in h.1.iter() {
+                let content = content.clone();
+                let header = HttpHeader {
+                    field_name: name,
+                    field_content: content,
+                };
+                header.write(to)?
+            }
+        }
+        let written = to.write_all("\r\n".as_bytes());
+        written = to.write_all("\r\n".as_bytes());
+        if let Err(err) = written {
+            return Err(Box::new(err));
+        };
     }
 }
 
@@ -187,6 +212,33 @@ impl HttpHeader {
         };
         debug!("header parsed: {}", header);
         Ok(Some(header))
+    }
+
+    pub fn write<T: io::Write>(&self, to: &mut T) -> ServerResult {
+        // https://www.w3.org/Protocols/rfc2616/rfc2616-sec4.html#sec4.5:
+        // generic-message = start-line
+        //                   *(message-header CRLF)
+        //                   CRLF
+        //                   [ message-body ]
+        // header-field   = field-name ":" OWS field-value OWS
+        // field-name     = token
+        let written = to.write_all(&self.field_name.as_bytes());
+        if let Err(err) = written {
+            return Err(Box::new(err));
+        };
+        written = to.write_all(": ".as_bytes());
+        if let Err(err) = written {
+            return Err(Box::new(err));
+        };
+        written = to.write_all(self.field_content.as_bytes());
+        if let Err(err) = written {
+            return Err(Box::new(err));
+        };
+        written = to.write_all("\r\n".as_bytes());
+        if let Err(err) = written {
+            return Err(Box::new(err));
+        };
+        Ok(())
     }
 }
 
