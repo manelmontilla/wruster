@@ -1,4 +1,3 @@
-use std::collections::hash_map::HashMap;
 use std::io;
 use std::io::{prelude::*, Cursor};
 
@@ -237,21 +236,12 @@ pub struct Response<'a> {
 }
 
 impl<'a> Response<'a> {
-    pub fn add_header(&mut self, name: String, value: String) {
-        self.headers.insert(name, value);
-    }
-
     pub fn write<T: io::Write>(&mut self, to: &mut T) -> ServerResult {
         let payload = format!("HTTP/1.1 {:#}\r\n", self.status);
         if let Err(err) = to.write(payload.as_bytes()) {
             return Err(Box::new(err));
         };
-        for (name, value) in &self.headers {
-            let header = format!("{}: {}\r\n", name, value);
-            if let Err(err) = to.write(header.as_bytes()) {
-                return Err(Box::new(err));
-            };
-        }
+        self.headers.write(to)?;
         if self.body.is_none() {
             match to.write("\r\n".as_bytes()) {
                 Ok(_) => return Ok(()),
@@ -265,7 +255,7 @@ impl<'a> Response<'a> {
     pub fn from_status(status: StatusCode) -> Response<'a> {
         Response {
             status,
-            headers: HashMap::new(),
+            headers: HttpHeaders::new(),
             body: None,
         }
     }
@@ -277,7 +267,7 @@ impl<'a> FromStr for Response<'a> {
         let content = Vec::from(content);
         let resp = Response {
             status: StatusCode::Ok,
-            headers: HashMap::new(),
+            headers: HttpHeaders::new(),
             body: Some(Body {
                 content_length: content.len() as u64,
                 content_type: mime::TEXT_PLAIN,

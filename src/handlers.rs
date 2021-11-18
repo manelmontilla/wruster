@@ -1,8 +1,8 @@
-use std::collections::HashMap;
 use std::fs;
 use std::io::BufReader;
 use std::{io, path::PathBuf};
 
+use crate::http::headers::HttpHeaders;
 use crate::http::{Body, Request, Response, StatusCode};
 
 pub fn serve_static(dir: &str, request: &Request) -> Response<'static> {
@@ -39,7 +39,7 @@ pub fn serve_static(dir: &str, request: &Request) -> Response<'static> {
     let mime_type = mime_guess::from_path(path).first_or_octet_stream();
     Response {
         status: StatusCode::Ok,
-        headers: HashMap::new(),
+        headers: HttpHeaders::new(),
         body: Some(Body {
             content_length: metadata.len(),
             content_type: mime_type,

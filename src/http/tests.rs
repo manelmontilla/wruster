@@ -5,12 +5,12 @@ use super::*;
 
 #[test]
 fn http_header_parse_standard() {
-    // Test parsing standard headers
+    // Test parsing standard headers.
     let header_content = "header-name:header value\r\n";
     let mut stream = BufReader::new(header_content.as_bytes());
     let header_content = HttpHeader::read_from(&mut stream).unwrap().unwrap();
-    assert_eq!(header_content.field_name.as_str(), "header-name");
-    assert_eq!(header_content.field_content.as_str(), "header value");
+    assert_eq!(header_content.name.as_str(), "header-name");
+    assert_eq!(header_content.value.as_str(), "header value");
 }
 
 #[test]
@@ -18,8 +18,8 @@ fn http_header_parse_with_colon_values() {
     let header_content = "Host: localhost:1234\r\n";
     let mut stream = BufReader::new(header_content.as_bytes());
     let header_content = HttpHeader::read_from(&mut stream).unwrap().unwrap();
-    assert_eq!(header_content.field_name.as_str(), "Host");
-    assert_eq!(header_content.field_content.as_str(), "localhost:1234");
+    assert_eq!(header_content.name.as_str(), "Host");
+    assert_eq!(header_content.value.as_str(), "localhost:1234");
 }
 
 #[test]
@@ -106,6 +106,11 @@ Content-Length: 4\r\n\
 test";
 
     let req = Request::from_str(str_req).unwrap();
+    let mut body = req.body.unwrap();
+    let mut payload = String::new();
+    body.content.read_to_string(&mut payload).unwrap();
+
     assert_eq!(req.uri, "/file");
     assert_eq!(req.method, HttpMethod::POST);
+    assert_eq!(&payload, "test");
 }

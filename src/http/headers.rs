@@ -50,8 +50,8 @@ impl HttpHeaders {
     }
 
     pub fn add_header(&mut self, header: HttpHeader) {
-        let name = header.field_name;
-        let content = header.field_content;
+        let name = header.name;
+        let content = header.value;
         let values = self.headers.entry(name).or_insert_with(Vec::new);
         values.push(content);
     }
@@ -70,14 +70,19 @@ impl HttpHeaders {
             let name = h.0.clone();
             for content in h.1.iter() {
                 let content = content.clone();
+                let name = name.clone();
                 let header = HttpHeader {
-                    field_name: name,
-                    field_content: content,
+                    name,
+                    value: content,
                 };
                 header.write(to)?
             }
         }
-        let written = to.write_all("\r\n".as_bytes());
+
+        let mut written = to.write_all("\r\n".as_bytes());
+        if let Err(err) = written {
+            return Err(Box::new(err));
+        };
         written = to.write_all("\r\n".as_bytes());
         if let Err(err) = written {
             return Err(Box::new(err));
@@ -94,8 +99,8 @@ impl Default for HttpHeaders {
 
 #[derive(Debug)]
 pub struct HttpHeader {
-    pub field_name: String,
-    pub field_content: String,
+    pub name: String,
+    pub value: String,
 }
 
 impl HttpHeader {
@@ -208,8 +213,8 @@ impl HttpHeader {
         }
 
         let header = HttpHeader {
-            field_name: name,
-            field_content: field_value,
+            name,
+            value: field_value,
         };
         debug!("header parsed: {}", header);
         Ok(Some(header))
@@ -223,7 +228,7 @@ impl HttpHeader {
         //                   [ message-body ]
         // header-field   = field-name ":" OWS field-value OWS
         // field-name     = token
-        let written = to.write_all(&self.field_name.as_bytes());
+        let mut written = to.write_all(&self.name.as_bytes());
         if let Err(err) = written {
             return Err(Box::new(err));
         };
@@ -231,7 +236,7 @@ impl HttpHeader {
         if let Err(err) = written {
             return Err(Box::new(err));
         };
-        written = to.write_all(self.field_content.as_bytes());
+        written = to.write_all(self.value.as_bytes());
         if let Err(err) = written {
             return Err(Box::new(err));
         };
@@ -245,6 +250,6 @@ impl HttpHeader {
 
 impl fmt::Display for HttpHeader {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}:{}", self.field_name, self.field_content)
+        write!(f, "{}:{}", self.name, self.value)
     }
 }

@@ -4,7 +4,7 @@ use std::path::Component;
 use std::sync::Arc;
 
 mod trie;
-use crate::{HttpMethod, Request, Response};
+use crate::http::{HttpMethod, Request, Response};
 use trie::Trie;
 
 pub type HttpHandler = Box<dyn Fn(Request) -> Response + Send + Sync>;

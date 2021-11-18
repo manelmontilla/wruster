@@ -1,8 +1,8 @@
-use std::io::Write;
 use std::net;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::{io::Write, ptr::read};
 
 #[macro_use]
 extern crate log;
@@ -12,6 +12,7 @@ pub mod http;
 pub mod router;
 mod thread_pool;
 
+use http::headers::HttpHeader;
 use http::*;
 use router::{Normalize, Router};
 
@@ -31,49 +32,76 @@ pub fn run_and_serve(addr: &str, routes: Router) -> ServerResult {
         info!("accepting connection from {}", src_addr);
         let cconfig = Arc::clone(&config);
         let action = move || {
-            handle_connection(stream, cconfig, src_addr);
+            handle_conversation(stream, cconfig, src_addr);
         };
         pool.run(Box::new(action));
     }
 }
 
-fn handle_connection(stream: net::TcpStream, routes: Arc<Router>, source_addr: SocketAddr) {
-    let mut response = run_action(&stream, routes);
+fn handle_conversation(mut stream: net::TcpStream, routes: Arc<Router>, source_addr: SocketAddr) {
+    loop {
+        if handle_connection(&stream, Arc::clone(&routes), source_addr) {
+            continue;
+        }
+        if let Err(err) = stream.flush() {
+            error!(
+                "error flusing stream to: {}, error info: {}",
+                source_addr, err
+            );
+            return;
+        }
+        if let Err(err) = stream.shutdown(net::Shutdown::Both) {
+            error!(
+                "error closing  connection with: {}, error info: {}",
+                source_addr, err
+            );
+            return;
+        }
+    }
+}
+
+fn handle_connection(
+    stream: &net::TcpStream,
+    routes: Arc<Router>,
+    source_addr: SocketAddr,
+) -> bool {
+    let mut response = match read_request(&stream) {
+        Ok(request) => run_action(request, routes),
+        Err(response) => response,
+    };
     // By now, we don't support keep alive connections.
-    response.add_header(String::from("Connection"), String::from("Close"));
+    response.headers.add_header(HttpHeader {
+        name: String::from("Connection"),
+        value: String::from("Close"),
+    });
+    // TODO: Review and handle the case when the stream returns and error when
+    // cloning.
     let mut resp_stream = stream.try_clone().unwrap();
     if let Err(err) = response.write(&mut resp_stream) {
         error!(
             "error writing response to: {}, error info: {}",
             source_addr, err
         );
-        return;
-    }
+        return false;
+    };
+    let cont = match response.headers.get("Connection") {
+        None => false,
+        Some(values) => values.iter().any(|value| value == "Close"),
+    };
+    cont
+}
 
-    if let Err(err) = resp_stream.flush() {
-        error!(
-            "error flusing stream to: {}, error info: {}",
-            source_addr, err
-        );
-        return;
-    }
-    if let Err(err) = stream.shutdown(net::Shutdown::Both) {
-        error!(
-            "error closing  connection with: {}, error info: {}",
-            source_addr, err
-        );
-        return;
+fn read_request(stream: &net::TcpStream) -> Result<Request, Response> {
+    match Request::read_from(stream) {
+        Err(err) => {
+            error!("error parsing request, error info: {}", err);
+            return Err(Response::from_status(StatusCode::BadRequest));
+        }
+        Ok(request) => Ok(request),
     }
 }
 
-fn run_action<'a>(stream: &'a net::TcpStream, routes: Arc<Router>) -> Response<'a> {
-    let mut request = match Request::read_from(stream) {
-        Err(err) => {
-            error!("error parsing request, error info: {}", err);
-            return Response::from_status(StatusCode::BadRequest);
-        }
-        Ok(request) => request,
-    };
+fn run_action<'a>(mut request: Request<'a>, routes: Arc<Router>) -> Response<'a> {
     let req_path = PathBuf::from(request.uri);
     let normalized = match req_path.normalize() {
         Ok(path) => path,
