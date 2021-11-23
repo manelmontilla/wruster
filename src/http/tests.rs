@@ -114,3 +114,18 @@ test";
     assert_eq!(req.method, HttpMethod::POST);
     assert_eq!(&payload, "test");
 }
+
+#[test]
+fn http_body_write() {
+    let content = "#wruster";
+    let mut body = Body {
+        content: Box::new(Cursor::new(content)),
+        content_type: mime::TEXT_PLAIN,
+        content_length: content.len() as u64,
+    };
+    let mut to: Vec<u8> = Vec::new();
+
+    body.write(&mut to).unwrap();
+    let got_content = String::from_utf8(to).unwrap();
+    assert_eq!(content, &got_content)
+}

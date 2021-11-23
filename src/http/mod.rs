@@ -141,18 +141,6 @@ pub struct Body<'a> {
 
 impl<'a> Body<'a> {
     pub fn write<T: io::Write>(&mut self, to: &mut T) -> ServerResult {
-        let mut header = format!("Content-Type: {}\r\n", &self.content_type);
-        if let Err(err) = to.write(header.as_bytes()) {
-            return Err(Box::new(err));
-        };
-        header = format!("Conent-Length: {}\r\n\r\n", self.content_length);
-        if let Err(err) = to.write(header.as_bytes()) {
-            return Err(Box::new(err));
-        };
-        self.write_content(to)
-    }
-
-    pub fn write_content<T: io::Write>(&mut self, to: &mut T) -> ServerResult {
         let src = &mut self.content;
         if let Err(err) = io::copy(src, to) {
             return Err(Box::new(err));
@@ -242,12 +230,13 @@ impl<'a> Response<'a> {
             return Err(Box::new(err));
         };
         self.headers.write(to)?;
-        if self.body.is_none() {
-            match to.write("\r\n".as_bytes()) {
-                Ok(_) => return Ok(()),
-                Err(err) => return Err(Box::new(err)),
-            }
+        if let Err(err) = to.write("\r\n".as_bytes()) {
+            return Err(Box::new(err));
         };
+        if self.body.is_none() {
+            return Ok(());
+        }
+        // TODO: handle possible error.
         let body = self.body.as_mut().unwrap();
         body.write(to)
     }

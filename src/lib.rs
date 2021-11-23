@@ -38,17 +38,10 @@ pub fn run_and_serve(addr: &str, routes: Router) -> ServerResult {
     }
 }
 
-fn handle_conversation(mut stream: net::TcpStream, routes: Arc<Router>, source_addr: SocketAddr) {
+fn handle_conversation(stream: net::TcpStream, routes: Arc<Router>, source_addr: SocketAddr) {
     loop {
         if handle_connection(&stream, Arc::clone(&routes), source_addr) {
             continue;
-        }
-        if let Err(err) = stream.flush() {
-            error!(
-                "error flusing stream to: {}, error info: {}",
-                source_addr, err
-            );
-            return;
         }
         if let Err(err) = stream.shutdown(net::Shutdown::Both) {
             error!(
@@ -69,11 +62,6 @@ fn handle_connection(
         Ok(request) => run_action(request, routes),
         Err(response) => response,
     };
-    // By now, we don't support keep alive connections.
-    response.headers.add_header(HttpHeader {
-        name: String::from("Connection"),
-        value: String::from("Close"),
-    });
     // TODO: Review and handle the case when the stream returns and error when
     // cloning.
     let mut resp_stream = stream.try_clone().unwrap();
@@ -84,6 +72,13 @@ fn handle_connection(
         );
         return false;
     };
+    if let Err(err) = resp_stream.flush() {
+        error!(
+            "error flusing stream to: {}, error info: {}",
+            source_addr, err
+        );
+        return false;
+    }
     let cont = match response.headers.get("Connection") {
         None => false,
         Some(values) => values.iter().any(|value| value == "Close"),
@@ -94,7 +89,7 @@ fn handle_connection(
 fn read_request(stream: &net::TcpStream) -> Result<Request, Response> {
     match Request::read_from(stream) {
         Err(err) => {
-            error!("error parsing request, error info: {}", err);
+            error!("error reading request, error info: {}", err);
             return Err(Response::from_status(StatusCode::BadRequest));
         }
         Ok(request) => Ok(request),

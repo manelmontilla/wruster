@@ -186,7 +186,7 @@ mod tests {
         let resp = action(request);
         let mut resp_body = resp.body.unwrap();
         let mut content = Vec::<u8>::new();
-        resp_body.write_content(&mut content).unwrap();
+        resp_body.write(&mut content).unwrap();
         println!("got {}", String::from_utf8_lossy(&content));
         assert_eq!(Vec::from("content"), content);
     }
