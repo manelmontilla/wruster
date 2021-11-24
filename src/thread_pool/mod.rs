@@ -1,4 +1,6 @@
+use std::borrow::{Borrow, BorrowMut};
 use std::sync::mpsc::{channel, Sender};
+use std::sync::{Arc, Mutex};
 use std::thread;
 
 type Action = Box<dyn FnOnce() + Send>;
@@ -6,13 +8,20 @@ type Action = Box<dyn FnOnce() + Send>;
 struct Worker {
     handle: Option<thread::JoinHandle<()>>,
     sender: Option<Sender<Action>>,
+    busy: Arc<Mutex<bool>>,
 }
 
 impl Worker {
     fn new() -> Worker {
+        let busy = Arc::new(Mutex::new(false));
+        let lbusy = Arc::clone(&busy);
         let (sender, receiver) = channel::<Action>();
         let handle = std::thread::spawn(move || loop {
+            let mut busy = lbusy.lock().unwrap();
+            *busy = false;
             let res = receiver.recv();
+            let mut busy = lbusy.lock().unwrap();
+            *busy = true;
             if let Ok(action) = res {
                 action();
                 debug!("action executed");
@@ -24,13 +33,17 @@ impl Worker {
         Worker {
             handle: Some(handle),
             sender: Some(sender),
+            busy,
         }
     }
 
     fn exec(&self, action: Action) {
-        if let Some(sender) = &self.sender {
-            sender.send(action).unwrap();
-        }
+        let sender = self.sender.as_ref().unwrap();
+        sender.send(action).unwrap();
+    }
+
+    fn is_busy(&self) -> bool {
+        *self.busy.lock().unwrap()
     }
 }
 
@@ -62,6 +75,15 @@ impl Pool {
     }
 
     pub fn run(&mut self, action: Action) {
+        if !self.workers[self.next].is_busy() {
+            self.workers[self.next].exec(action);
+            self.next = (self.next + 1) % self.size;
+            return;
+        }
+        let mut from = self.next + 1;
+        while self.workers[from].is_busy() && from != self.next {
+            from = (from + 1) % self.size;
+        }
         self.workers[self.next].exec(action);
         self.next = (self.next + 1) % self.size;
     }
