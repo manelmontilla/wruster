@@ -3,7 +3,7 @@ use std::io::{prelude::*, Cursor};
 
 use std::convert::Infallible;
 use std::error::Error;
-use std::fmt;
+use std::fmt::{self, format};
 use std::fmt::Debug;
 
 use std::str::FromStr;
@@ -13,6 +13,7 @@ pub mod errors;
 pub mod headers;
 
 use errors::*;
+use super::errors::{ParseRequestError::EmptyRequest, ParseRequestError::Unknow};
 use headers::*;
 
 #[cfg(test)]
@@ -78,50 +79,41 @@ impl HttpRequestLine {
         // to make it clear not performant.
         let mut method = Vec::new();
         if let Err(err) = from.read_until(b' ', &mut method) {
-            return Err(ParseRequestError {
-                msg: err.to_string(),
-            });
+            return Err(Unknow(err.to_string()));
         };
+        // It could by an EOF, so an empty request.
+        if method.len() == 0 {
+            return Err(EmptyRequest);
+        }
         if method.len() < 2 {
-            return Err(ParseRequestError {
-                msg: String::from("invalied request line"),
-            });
+            let msg = format!("invalid request line {:?}", method);
+            return Err(Unknow(msg))
         };
         let method = String::from_utf8_lossy(&method[..method.len() - 1]);
         let method = match HttpMethod::from_str(&method) {
-            Err(err) => return Err(ParseRequestError { msg: err }),
+            Err(err) => return Err(Unknow(err)),
             Ok(method) => method,
         };
 
         let mut uri = Vec::new();
         if let Err(err) = from.read_until(b' ', &mut uri) {
-            return Err(ParseRequestError {
-                msg: err.to_string(),
-            });
+            return Err(Unknow(err.to_string()));
         };
         if uri.len() < 2 {
-            return Err(ParseRequestError {
-                msg: String::from("invalied request line"),
-            });
+            return Err(Unknow(String::from("invalid request line")));
         };
         let uri = String::from_utf8_lossy(&uri[..uri.len() - 1]);
 
         let mut version = Vec::new();
         if let Err(err) = from.read_until(b'\n', &mut version) {
-            return Err(ParseRequestError {
-                msg: err.to_string(),
-            });
+            return Err(Unknow(err.to_string()));
         };
         if version.len() < 3 {
-            return Err(ParseRequestError {
-                msg: String::from("invalied request line"),
-            });
+            return Err(Unknow(String::from("invalid request line")));
         };
 
         if version[version.len() - 2] != (b'\r') {
-            return Err(ParseRequestError {
-                msg: String::from("invalied request line"),
-            });
+            return Err(Unknow(String::from("invalid request line")));
         }
         let version = String::from_utf8_lossy(&version[..version.len() - 2]);
 
@@ -156,11 +148,11 @@ impl<'a> Body<'a> {
             // Transfer-Enconding entity is not supported.
             if encoding.len() != 1 {
                 let msg = format!("invalid Transfer-Enconding header");
-                return Err(ParseRequestError { msg });
+                return Err(Unknow(msg));
             }
             if encoding[0] != "identity" {
                 let msg = format!("Transfer-Encoding: {} is not supported", encoding[0]);
-                return Err(ParseRequestError { msg });
+                return Err(Unknow(msg));
             }
         };
 
@@ -169,7 +161,7 @@ impl<'a> Body<'a> {
             Some(lengths) => {
                 if lengths.len() != 1 {
                     let msg = String::from("invalid Content-Length header");
-                    return Err(ParseRequestError { msg });
+                    return Err(Unknow(msg));
                 }
                 &lengths[0]
             }
@@ -178,7 +170,7 @@ impl<'a> Body<'a> {
         let len = match usize::from_str(len) {
             Err(err) => {
                 let msg = format!("invalid Content-Length header, {}", err.to_string());
-                return Err(ParseRequestError { msg });
+                return Err(Unknow(msg));
             }
             Ok(size) => size,
         };
@@ -230,9 +222,9 @@ impl<'a> Response<'a> {
             return Err(Box::new(err));
         };
         self.headers.write(to)?;
-        if let Err(err) = to.write("\r\n".as_bytes()) {
-            return Err(Box::new(err));
-        };
+        // if let Err(err) = to.write("\r\n".as_bytes()) {
+        //     return Err(Box::new(err));
+        // };
         if self.body.is_none() {
             return Ok(());
         }

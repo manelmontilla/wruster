@@ -3,13 +3,17 @@ use std::fmt;
 use std::fmt::Debug;
 
 #[derive(Debug, PartialEq)]
-pub struct ParseRequestError {
-    pub msg: String,
+pub enum ParseRequestError {
+    Unknow(String),
+    EmptyRequest,
 }
 
 impl fmt::Display for ParseRequestError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.msg)
+        match self {
+           Self::Unknow(msg) => write!(f, "{}", msg),
+           Self::EmptyRequest => write!(f, "empty request"),
+        }
     }
 }
 

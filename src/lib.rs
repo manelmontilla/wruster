@@ -2,7 +2,7 @@ use std::net;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::{io::Write, ptr::read};
+use std::{io::Write};
 
 #[macro_use]
 extern crate log;
@@ -12,7 +12,6 @@ pub mod http;
 pub mod router;
 mod thread_pool;
 
-use http::headers::HttpHeader;
 use http::*;
 use router::{Normalize, Router};
 
@@ -39,6 +38,7 @@ pub fn run_and_serve(addr: &str, routes: Router) -> ServerResult {
 }
 
 fn handle_conversation(stream: net::TcpStream, routes: Arc<Router>, source_addr: SocketAddr) {
+    debug!("handling conversation {}", source_addr);
     loop {
         if handle_connection(&stream, Arc::clone(&routes), source_addr) {
             continue;
@@ -80,8 +80,8 @@ fn handle_connection(
         return false;
     }
     let cont = match response.headers.get("Connection") {
-        None => false,
-        Some(values) => values.iter().any(|value| value == "Close"),
+        None => true,
+        Some(values) => values.iter().any(|value| value != "Close"),
     };
     cont
 }

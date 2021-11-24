@@ -29,18 +29,14 @@ fn http_header_invalid_tokens() {
     let mut stream = BufReader::new(header_content.as_bytes());
     assert_eq!(
         HttpHeader::read_from(&mut stream).unwrap_err(),
-        ParseRequestError {
-            msg: String::from("invalid header name")
-        }
+        Unknow(String::from("invalid header name"))
     );
 
     let header_content = "header\x0Bname:headervalue\r\n";
     let mut stream = BufReader::new(header_content.as_bytes());
     assert_eq!(
         HttpHeader::read_from(&mut stream).unwrap_err(),
-        ParseRequestError {
-            msg: String::from("invalid header name")
-        }
+        Unknow(String::from("invalid header name"))
     );
 }
 
@@ -50,9 +46,7 @@ fn http_header_no_colon() {
     let mut stream = BufReader::new(header_content.as_bytes());
     assert_eq!(
         HttpHeader::read_from(&mut stream).unwrap_err(),
-        ParseRequestError {
-            msg: String::from("invalid header name")
-        }
+        Unknow(String::from("invalid header name"))
     );
 }
 
@@ -62,9 +56,7 @@ fn http_header_invalid_header_values() {
     let mut stream = BufReader::new(header_content.as_bytes());
     assert_eq!(
         HttpHeader::read_from(&mut stream).unwrap_err(),
-        ParseRequestError {
-            msg: String::from("invalid header value")
-        }
+        Unknow(String::from("invalid header value"))
     );
 }
 
@@ -128,4 +120,68 @@ fn http_body_write() {
     body.write(&mut to).unwrap();
     let got_content = String::from_utf8(to).unwrap();
     assert_eq!(content, &got_content)
+}
+
+#[test]
+fn http_response_write() {
+    let content = "#wruster";
+    let body = Body {
+        content: Box::new(Cursor::new(content)),
+        content_type: mime::TEXT_PLAIN,
+        content_length: content.len() as u64,
+    };
+
+    let mut headers = HttpHeaders::new();
+    headers.add_header(HttpHeader {
+        name: String::from("Content-Length"),
+        value: String::from("8"),
+    });
+    let mut response = Response {
+        status: StatusCode::Ok,
+        headers: headers,
+        body: Some(body),
+    };
+
+    let mut to: Vec<u8> = Vec::new();
+    response.write(&mut to).unwrap();
+
+    let got = String::from_utf8(to).unwrap();
+    let want = "HTTP/1.1 200 OK\r\nContent-Length: 8\r\n\r\n#wruster";
+    assert_eq!(want, &got)
+}
+
+#[test]
+fn http_response_write_empty_body() {
+    let mut headers = HttpHeaders::new();
+    headers.add_header(HttpHeader {
+        name: String::from("Some"),
+        value: String::from("Some-value"),
+    });
+    let mut response = Response {
+        status: StatusCode::Ok,
+        headers: headers,
+        body: None,
+    };
+
+    let mut to: Vec<u8> = Vec::new();
+    response.write(&mut to).unwrap();
+
+    let got = String::from_utf8(to).unwrap();
+    let want = "HTTP/1.1 200 OK\r\nSome: Some-value\r\n\r\n";
+    assert_eq!(want, &got)
+}
+
+#[test]
+fn http_response_no_headers_no_body() {
+    let headers = HttpHeaders::new();
+    let mut response = Response {
+        status: StatusCode::Ok,
+        headers: headers,
+        body: None,
+    };
+    let mut to: Vec<u8> = Vec::new();
+    response.write(&mut to).unwrap();
+    let got = String::from_utf8(to).unwrap();
+    let want = "HTTP/1.1 200 OK\r\n\r\n";
+    assert_eq!(want, &got)
 }
