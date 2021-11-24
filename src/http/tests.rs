@@ -29,14 +29,14 @@ fn http_header_invalid_tokens() {
     let mut stream = BufReader::new(header_content.as_bytes());
     assert_eq!(
         HttpHeader::read_from(&mut stream).unwrap_err(),
-        Unknow(String::from("invalid header name"))
+        Unknow(String::from("invalid header name line"))
     );
 
     let header_content = "header\x0Bname:headervalue\r\n";
     let mut stream = BufReader::new(header_content.as_bytes());
     assert_eq!(
         HttpHeader::read_from(&mut stream).unwrap_err(),
-        Unknow(String::from("invalid header name"))
+        Unknow(String::from("invalid header name line"))
     );
 }
 
@@ -46,7 +46,7 @@ fn http_header_no_colon() {
     let mut stream = BufReader::new(header_content.as_bytes());
     assert_eq!(
         HttpHeader::read_from(&mut stream).unwrap_err(),
-        Unknow(String::from("invalid header name"))
+        Unknow(String::from("invalid header name line"))
     );
 }
 
@@ -56,7 +56,7 @@ fn http_header_invalid_header_values() {
     let mut stream = BufReader::new(header_content.as_bytes());
     assert_eq!(
         HttpHeader::read_from(&mut stream).unwrap_err(),
-        Unknow(String::from("invalid header value"))
+        Unknow(String::from("invalid header name value"))
     );
 }
 
