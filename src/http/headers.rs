@@ -4,8 +4,8 @@ use std::fmt::Debug;
 use std::io;
 use std::io::prelude::*;
 
+use super::errors::ParseRequestError::Unknow;
 use super::errors::*;
-use super::errors::{ParseRequestError::Unknow};
 use super::HttpMessageChar;
 use super::ServerResult;
 

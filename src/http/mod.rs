@@ -3,8 +3,8 @@ use std::io::{prelude::*, Cursor};
 
 use std::convert::Infallible;
 use std::error::Error;
-use std::fmt::{self, format};
 use std::fmt::Debug;
+use std::fmt::{self, format};
 
 use std::str::FromStr;
 use std::string::ParseError;
@@ -12,8 +12,8 @@ use std::string::ParseError;
 pub mod errors;
 pub mod headers;
 
-use errors::*;
 use super::errors::{ParseRequestError::EmptyRequest, ParseRequestError::Unknow};
+use errors::*;
 use headers::*;
 
 #[cfg(test)]
@@ -87,7 +87,7 @@ impl HttpRequestLine {
         }
         if method.len() < 2 {
             let msg = format!("invalid request line {:?}", method);
-            return Err(Unknow(msg))
+            return Err(Unknow(msg));
         };
         let method = String::from_utf8_lossy(&method[..method.len() - 1]);
         let method = match HttpMethod::from_str(&method) {

@@ -11,8 +11,8 @@ pub enum ParseRequestError {
 impl fmt::Display for ParseRequestError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-           Self::Unknow(msg) => write!(f, "{}", msg),
-           Self::EmptyRequest => write!(f, "empty request"),
+            Self::Unknow(msg) => write!(f, "{}", msg),
+            Self::EmptyRequest => write!(f, "empty request"),
         }
     }
 }

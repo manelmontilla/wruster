@@ -1,8 +1,8 @@
+use std::io::Write;
 use std::net;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::{io::Write};
 
 #[macro_use]
 extern crate log;
