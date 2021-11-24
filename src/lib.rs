@@ -37,10 +37,15 @@ pub fn run_and_serve(addr: &str, routes: Router) -> ServerResult {
     }
 }
 
-fn handle_conversation(stream: net::TcpStream, routes: Arc<Router>, source_addr: SocketAddr) {
+fn handle_conversation(mut stream: net::TcpStream, routes: Arc<Router>, source_addr: SocketAddr) {
     debug!("handling conversation {}", source_addr);
     loop {
         if handle_connection(&stream, Arc::clone(&routes), source_addr) {
+            if let Err(err) = stream.flush() {
+                error!("error flusing: {}, error info: {}", source_addr, err);
+                return;
+            }
+            debug!("connection fluxed");
             continue;
         }
         if let Err(err) = stream.shutdown(net::Shutdown::Both) {
@@ -48,8 +53,10 @@ fn handle_conversation(stream: net::TcpStream, routes: Arc<Router>, source_addr:
                 "error closing  connection with: {}, error info: {}",
                 source_addr, err
             );
-            return;
+        } else {
+            debug!("connection closed")
         }
+        break;
     }
 }
 
@@ -58,9 +65,19 @@ fn handle_connection(
     routes: Arc<Router>,
     source_addr: SocketAddr,
 ) -> bool {
+    let mut cont = false;
     let mut response = match read_request(&stream) {
-        Ok(request) => run_action(request, routes),
-        Err(response) => response,
+        Ok(request) => {
+            cont = is_connection_alive(&request);
+            run_action(request, routes)
+        }
+        Err(err) => match err {
+            errors::ParseRequestError::Unknow(err) => {
+                error!("error reading request, error info: {}", err);
+                Response::from_status(StatusCode::BadRequest)
+            }
+            errors::ParseRequestError::EmptyRequest => return true,
+        },
     };
     // TODO: Review and handle the case when the stream returns and error when
     // cloning.
@@ -72,26 +89,12 @@ fn handle_connection(
         );
         return false;
     };
-    if let Err(err) = resp_stream.flush() {
-        error!(
-            "error flusing stream to: {}, error info: {}",
-            source_addr, err
-        );
-        return false;
-    }
-    let cont = match response.headers.get("Connection") {
-        None => true,
-        Some(values) => values.iter().any(|value| value != "Close"),
-    };
     cont
 }
 
-fn read_request(stream: &net::TcpStream) -> Result<Request, Response> {
+fn read_request(stream: &net::TcpStream) -> Result<Request, errors::ParseRequestError> {
     match Request::read_from(stream) {
-        Err(err) => {
-            error!("error reading request, error info: {}", err);
-            return Err(Response::from_status(StatusCode::BadRequest));
-        }
+        Err(err) => Err(err),
         Ok(request) => Ok(request),
     }
 }
@@ -117,4 +120,11 @@ fn run_action<'a>(mut request: Request<'a>, routes: Arc<Router>) -> Response<'a>
     };
     request.uri = String::from(normalized);
     action(request)
+}
+
+fn is_connection_alive(request: &http::Request) -> bool {
+    match request.headers.get("Connection") {
+        None => false,
+        Some(values) => values.iter().any(|value| value == "keep-alive"),
+    }
 }

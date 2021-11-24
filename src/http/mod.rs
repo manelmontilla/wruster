@@ -83,7 +83,7 @@ impl HttpRequestLine {
         };
         // It could by an EOF, so an empty request.
         if method.len() == 0 {
-            return Err(EmptyRequest);
+            return Err(Unknow(String::from("connection closed")));
         }
         if method.len() < 2 {
             let msg = format!("invalid request line {:?}", method);

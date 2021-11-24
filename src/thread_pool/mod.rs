@@ -15,8 +15,10 @@ impl Worker {
             let res = receiver.recv();
             if let Ok(action) = res {
                 action();
+                debug!("action executed");
                 continue;
             }
+            debug!("worker stopped");
             break;
         });
         Worker {
@@ -61,7 +63,7 @@ impl Pool {
 
     pub fn run(&mut self, action: Action) {
         self.workers[self.next].exec(action);
-        self.next = self.size % self.size;
+        self.next = (self.next + 1) % self.size;
     }
 }
 
