@@ -17,13 +17,16 @@ impl Worker {
         let lbusy = Arc::clone(&busy);
         let (sender, receiver) = channel::<Action>();
         let handle = std::thread::spawn(move || loop {
-            let mut busy = lbusy.lock().unwrap();
-            *busy = false;
             let res = receiver.recv();
+            let lbusy = Arc::clone(&lbusy);
             let mut busy = lbusy.lock().unwrap();
             *busy = true;
+            drop(busy);
             if let Ok(action) = res {
                 action();
+                let mut busy = lbusy.lock().unwrap();
+                *busy = false;
+                drop(busy);
                 debug!("action executed");
                 continue;
             }
@@ -43,7 +46,8 @@ impl Worker {
     }
 
     fn is_busy(&self) -> bool {
-        *self.busy.lock().unwrap()
+        let b = self.busy.lock().unwrap();
+        *b
     }
 }
 
