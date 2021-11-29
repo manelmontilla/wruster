@@ -18,10 +18,10 @@ impl Worker {
         let hbusy = Arc::clone(&busy);
         let handle = std::thread::spawn(move || loop {
             let res = receiver.recv();
-            &hbusy.store(true, Ordering::SeqCst);
+            hbusy.store(true, Ordering::SeqCst);
             if let Ok(action) = res {
                 action();
-                &hbusy.store(false, Ordering::SeqCst);
+                hbusy.store(false, Ordering::SeqCst);
                 debug!("action executed");
                 continue;
             }

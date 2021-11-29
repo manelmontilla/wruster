@@ -93,7 +93,7 @@ fn read_request(stream: &net::TcpStream) -> Result<Request, errors::ParseRequest
     }
 }
 
-fn run_action<'a>(mut request: Request<'a>, routes: Arc<Router>) -> Response<'a> {
+fn run_action(mut request: Request<'_>, routes: Arc<Router>) -> Response<'_> {
     let req_path = PathBuf::from(request.uri);
     let normalized = match req_path.normalize() {
         Ok(path) => path,

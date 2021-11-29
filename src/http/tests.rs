@@ -97,7 +97,7 @@ Content-Length: 4\r\n\
 \r\n\
 test";
 
-    let req = Request::from_str(str_req).unwrap();
+    let req = Request::read_from_str(str_req).unwrap();
     let mut body = req.body.unwrap();
     let mut payload = String::new();
     body.content.read_to_string(&mut payload).unwrap();

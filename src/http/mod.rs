@@ -56,7 +56,7 @@ impl<'a> Request<'a> {
         Ok(request)
     }
 
-    fn from_str<'b>(from: &'b str) -> Result<Request<'b>, ParseRequestError> {
+    pub fn read_from_str(from: & str) -> Result<Request<'_>, ParseRequestError> {
         Request::read_from(Cursor::new(from))
     }
 }
@@ -82,7 +82,7 @@ impl HttpRequestLine {
             return Err(Unknow(err.to_string()));
         };
         // It could by an EOF, so an empty request.
-        if method.len() == 0 {
+        if method.is_empty() {
             //return Err(Unknow(String::from("connection closed")));
             return Err(ConnectionClosed);
         }
@@ -148,7 +148,7 @@ impl<'a> Body<'a> {
         if let Some(encoding) = headers.get("Transfer-Enconding") {
             // Transfer-Enconding entity is not supported.
             if encoding.len() != 1 {
-                let msg = format!("invalid Transfer-Enconding header");
+                let msg = "invalid Transfer-Enconding header".to_string();
                 return Err(Unknow(msg));
             }
             if encoding[0] != "identity" {

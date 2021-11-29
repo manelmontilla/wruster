@@ -30,7 +30,7 @@ fn main() {
     routes.add(
         "/post",
         http::HttpMethod::POST,
-        Box::new(|request| log_request(request)),
+        Box::new(log_request),
     );
     if let Err(err) = run_and_serve(addr, routes) {
         error!("error running wruster {}", err.to_string());

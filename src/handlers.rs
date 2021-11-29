@@ -49,7 +49,7 @@ pub fn serve_static(dir: &str, request: &Request) -> Response<'static> {
     });
     Response {
         status: StatusCode::Ok,
-        headers: headers,
+        headers,
         body: Some(Body {
             content_length: metadata.len(),
             content_type: mime_type,
@@ -58,7 +58,7 @@ pub fn serve_static(dir: &str, request: &Request) -> Response<'static> {
     }
 }
 
-pub fn log_request(mut request: Request) -> Response<'static> {
+pub fn log_request(mut request: Request) -> Response<'_> {
     info!("request {:?}", request);
     if let Some(body) = request.body.as_mut() {
         let mut content = String::new();
