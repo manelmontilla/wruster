@@ -60,10 +60,10 @@ fn handle_connection(
     routes: Arc<Router>,
     source_addr: SocketAddr,
 ) -> bool {
-    let mut cont = false;
+    let mut connection_open = false;
     let mut response = match read_request(&stream) {
         Ok(request) => {
-            cont = is_connection_alive(&request);
+            connection_open = is_connection_alive(&request);
             run_action(request, routes)
         }
         Err(err) => match err {
@@ -83,7 +83,7 @@ fn handle_connection(
         );
         return false;
     };
-    cont
+    connection_open
 }
 
 fn read_request(stream: &net::TcpStream) -> Result<Request, errors::ParseRequestError> {
