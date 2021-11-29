@@ -41,16 +41,13 @@ fn handle_conversation(mut stream: net::TcpStream, routes: Arc<Router>, source_a
     debug!("handling conversation with {}", source_addr);
     while handle_connection(&stream, Arc::clone(&routes), source_addr) {
         if let Err(err) = stream.flush() {
-            error!("error flusing: {}, error info: {}", source_addr, err);
+            error!("error flusing to: {}, {}", source_addr, err);
             return;
         }
         debug!("connection fluxed");
     }
     if let Err(err) = stream.shutdown(net::Shutdown::Write) {
-        error!(
-            "error closing connection with: {}, error info: {}",
-            source_addr, err
-        );
+        error!("error closing connection with: {}, {}", source_addr, err);
     }
     debug!("connection closed")
 }
