@@ -1,8 +1,7 @@
 use std::env;
 use std::process;
 
-use wruster::handlers;
-use wruster::handlers::log_request;
+use wruster::handlers::{log_middleware, log_request, serve_static};
 use wruster::http;
 use wruster::router;
 
@@ -25,13 +24,10 @@ fn main() {
 
     let routes = router::Router::new();
     let dir = dir.clone();
-    let serve_dir: HttpHandler = Box::new(move |request| handlers::serve_static(&dir, &request));
-    routes.add("/", http::HttpMethod::GET, Box::new(serve_dir));
-    routes.add(
-        "/post",
-        http::HttpMethod::POST,
-        Box::new(log_request),
-    );
+    let serve_dir: HttpHandler =
+        log_middleware(Box::new(move |request| serve_static(&dir, &request)));
+    routes.add("/", http::HttpMethod::GET, serve_dir);
+    routes.add("/post", http::HttpMethod::POST, Box::new(log_request));
     if let Err(err) = run_and_serve(addr, routes) {
         error!("error running wruster {}", err.to_string());
         process::exit(1);

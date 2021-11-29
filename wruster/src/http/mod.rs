@@ -32,7 +32,7 @@ pub struct Request<'a> {
 
 impl<'a> Request<'a> {
     pub fn read_from<T: io::Read + 'a>(from: T) -> Result<Request<'a>, ParseRequestError> {
-        debug!("pasing request");
+        debug!("parsing request");
         let mut reader = io::BufReader::new(from);
         let request_line = match HttpRequestLine::read_from(&mut reader) {
             Ok(request) => request,
@@ -56,7 +56,7 @@ impl<'a> Request<'a> {
         Ok(request)
     }
 
-    pub fn read_from_str(from: & str) -> Result<Request<'_>, ParseRequestError> {
+    pub fn read_from_str(from: &str) -> Result<Request<'_>, ParseRequestError> {
         Request::read_from(Cursor::new(from))
     }
 }
@@ -222,10 +222,13 @@ impl<'a> Response<'a> {
         if let Err(err) = to.write(payload.as_bytes()) {
             return Err(Box::new(err));
         };
+        if self.body.is_none() {
+            self.headers.add_header(HttpHeader {
+                name: String::from("Content-Length"),
+                value: String::from("0"),
+            })
+        }
         self.headers.write(to)?;
-        // if let Err(err) = to.write("\r\n".as_bytes()) {
-        //     return Err(Box::new(err));
-        // };
         if self.body.is_none() {
             return Ok(());
         }
@@ -235,9 +238,10 @@ impl<'a> Response<'a> {
     }
 
     pub fn from_status(status: StatusCode) -> Response<'a> {
+        let headers = HttpHeaders::new();
         Response {
             status,
-            headers: HttpHeaders::new(),
+            headers,
             body: None,
         }
     }

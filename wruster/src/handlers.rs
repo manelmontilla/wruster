@@ -1,9 +1,11 @@
 use std::fs;
 use std::io::BufReader;
+use std::ops::Add;
 use std::{io, path::PathBuf};
 
 use crate::http::headers::{HttpHeader, HttpHeaders};
 use crate::http::{Body, Request, Response, StatusCode};
+use crate::router::HttpHandler;
 
 pub fn serve_static(dir: &str, request: &Request) -> Response<'static> {
     let base_path: PathBuf = PathBuf::from(dir).canonicalize().unwrap();
@@ -66,4 +68,13 @@ pub fn log_request(mut request: Request) -> Response<'_> {
         info!("request body: {}", content);
     }
     Response::from_status(StatusCode::Ok)
+}
+
+pub fn log_middleware(handler: HttpHandler) -> HttpHandler {
+    Box::new(move |request: Request| {
+        info!("request {:?}", request);
+        let response = handler(request);
+        info!("response: {:?}", response);
+        response
+    })
 }

@@ -48,7 +48,7 @@ fn handle_conversation(mut stream: net::TcpStream, routes: Arc<Router>, source_a
     }
     if let Err(err) = stream.shutdown(net::Shutdown::Write) {
         error!(
-            "error closing  connection with: {}, error info: {}",
+            "error closing connection with: {}, error info: {}",
             source_addr, err
         );
     }
