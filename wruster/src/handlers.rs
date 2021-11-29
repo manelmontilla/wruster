@@ -1,6 +1,5 @@
 use std::fs;
 use std::io::BufReader;
-use std::ops::Add;
 use std::{io, path::PathBuf};
 
 use crate::http::headers::{HttpHeader, HttpHeaders};
