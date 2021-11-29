@@ -1,6 +1,6 @@
-use std::borrow::{Borrow, BorrowMut};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{channel, Sender};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::thread;
 
 type Action = Box<dyn FnOnce() + Send>;
@@ -8,25 +8,20 @@ type Action = Box<dyn FnOnce() + Send>;
 struct Worker {
     handle: Option<thread::JoinHandle<()>>,
     sender: Option<Sender<Action>>,
-    busy: Arc<Mutex<bool>>,
+    busy: Arc<AtomicBool>,
 }
 
 impl Worker {
     fn new() -> Worker {
-        let busy = Arc::new(Mutex::new(false));
-        let lbusy = Arc::clone(&busy);
+        let busy = Arc::new(AtomicBool::new(false));
         let (sender, receiver) = channel::<Action>();
+        let hbusy = Arc::clone(&busy);
         let handle = std::thread::spawn(move || loop {
             let res = receiver.recv();
-            let lbusy = Arc::clone(&lbusy);
-            let mut busy = lbusy.lock().unwrap();
-            *busy = true;
-            drop(busy);
+            &hbusy.store(true, Ordering::SeqCst);
             if let Ok(action) = res {
                 action();
-                let mut busy = lbusy.lock().unwrap();
-                *busy = false;
-                drop(busy);
+                &hbusy.store(false, Ordering::SeqCst);
                 debug!("action executed");
                 continue;
             }
@@ -46,8 +41,7 @@ impl Worker {
     }
 
     fn is_busy(&self) -> bool {
-        let b = self.busy.lock().unwrap();
-        *b
+        self.busy.load(Ordering::SeqCst)
     }
 }
 
@@ -84,10 +78,11 @@ impl Pool {
             self.next = (self.next + 1) % self.size;
             return;
         }
-        let mut from = self.next + 1;
+        let mut from = (self.next + 1) % self.size;
         while self.workers[from].is_busy() && from != self.next {
             from = (from + 1) % self.size;
         }
+        self.next = from;
         self.workers[self.next].exec(action);
         self.next = (self.next + 1) % self.size;
     }

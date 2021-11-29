@@ -22,7 +22,7 @@ pub fn run_and_serve(addr: &str, routes: Router) -> ServerResult {
     };
     info!("listening on {}", &addr);
     let config = Arc::new(routes);
-    let mut pool = thread_pool::Pool::new(2);
+    let mut pool = thread_pool::Pool::new(5);
     loop {
         let (stream, src_addr) = match listener.accept() {
             Err(err) => return Err(Box::new(err)),
