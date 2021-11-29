@@ -39,25 +39,20 @@ pub fn run_and_serve(addr: &str, routes: Router) -> ServerResult {
 
 fn handle_conversation(mut stream: net::TcpStream, routes: Arc<Router>, source_addr: SocketAddr) {
     debug!("handling conversation with {}", source_addr);
-    loop {
-        if handle_connection(&stream, Arc::clone(&routes), source_addr) {
-            if let Err(err) = stream.flush() {
-                error!("error flusing: {}, error info: {}", source_addr, err);
-                return;
-            }
-            debug!("connection fluxed");
-            continue;
+    while handle_connection(&stream, Arc::clone(&routes), source_addr) {
+        if let Err(err) = stream.flush() {
+            error!("error flusing: {}, error info: {}", source_addr, err);
+            return;
         }
-        if let Err(err) = stream.shutdown(net::Shutdown::Write) {
-            error!(
-                "error closing  connection with: {}, error info: {}",
-                source_addr, err
-            );
-        } else {
-            debug!("connection closed")
-        }
-        break;
+        debug!("connection fluxed");
     }
+    if let Err(err) = stream.shutdown(net::Shutdown::Write) {
+        error!(
+            "error closing  connection with: {}, error info: {}",
+            source_addr, err
+        );
+    }
+    debug!("connection closed")
 }
 
 fn handle_connection(

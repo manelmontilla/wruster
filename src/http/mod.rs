@@ -12,7 +12,7 @@ use std::string::ParseError;
 pub mod errors;
 pub mod headers;
 
-use super::errors::ParseRequestError::{Unknow, ConnectionClosed};
+use super::errors::ParseRequestError::{ConnectionClosed, Unknow};
 use errors::*;
 use headers::*;
 
