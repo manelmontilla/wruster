@@ -38,7 +38,7 @@ pub fn run_and_serve(addr: &str, routes: Router) -> ServerResult {
 }
 
 fn handle_conversation(mut stream: net::TcpStream, routes: Arc<Router>, source_addr: SocketAddr) {
-    debug!("handling conversation {}", source_addr);
+    debug!("handling conversation with {}", source_addr);
     loop {
         if handle_connection(&stream, Arc::clone(&routes), source_addr) {
             if let Err(err) = stream.flush() {
@@ -76,11 +76,10 @@ fn handle_connection(
                 error!("error reading request, error info: {}", err);
                 Response::from_status(StatusCode::BadRequest)
             }
-            errors::ParseRequestError::EmptyRequest => return true,
+            errors::ParseRequestError::ConnectionClosed => return false,
         },
     };
-    // TODO: Review and handle the case when the stream returns and error when
-    // cloning.
+    // TODO: Handle error cloning the stream.
     let mut resp_stream = stream.try_clone().unwrap();
     if let Err(err) = response.write(&mut resp_stream) {
         error!(

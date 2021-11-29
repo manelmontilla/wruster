@@ -138,7 +138,7 @@ impl HttpHeader {
         if line.len() == 2 {
             return Ok(None);
         };
-        println!("header line {}", String::from_utf8_lossy(&line));
+        debug!("header line {}", String::from_utf8_lossy(&line));
         // Remove the \r\n at the end of the header line.
         let line = &line[..line.len() - 2];
         // Read the field-name which is a token:
@@ -162,7 +162,7 @@ impl HttpHeader {
         };
         // After the token we MUST receive a colon.
         if line[i] != b':' {
-            debug!(
+            error!(
                 "invalid header line: {}, missing semicolon",
                 String::from_utf8_lossy(line)
             );

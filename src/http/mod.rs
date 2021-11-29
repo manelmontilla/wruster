@@ -4,7 +4,7 @@ use std::io::{prelude::*, Cursor};
 use std::convert::Infallible;
 use std::error::Error;
 use std::fmt::Debug;
-use std::fmt::{self, format};
+use std::fmt::{self};
 
 use std::str::FromStr;
 use std::string::ParseError;
@@ -12,7 +12,7 @@ use std::string::ParseError;
 pub mod errors;
 pub mod headers;
 
-use super::errors::{ParseRequestError::EmptyRequest, ParseRequestError::Unknow};
+use super::errors::ParseRequestError::{Unknow, ConnectionClosed};
 use errors::*;
 use headers::*;
 
@@ -83,7 +83,8 @@ impl HttpRequestLine {
         };
         // It could by an EOF, so an empty request.
         if method.len() == 0 {
-            return Err(Unknow(String::from("connection closed")));
+            //return Err(Unknow(String::from("connection closed")));
+            return Err(ConnectionClosed);
         }
         if method.len() < 2 {
             let msg = format!("invalid request line {:?}", method);
