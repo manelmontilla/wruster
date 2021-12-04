@@ -7,13 +7,15 @@ use std::fmt::Debug;
 use std::fmt::{self};
 
 use std::str::FromStr;
-use std::string::ParseError;
 
 pub mod errors;
 pub mod headers;
+mod status;
+pub use self::status::StatusCode;
 
-use super::errors::ParseRequestError::{ConnectionClosed, Unknow};
-use errors::*;
+use crate::errors::ParseError;
+use crate::errors::ParseError::{ConnectionClosed, Unknow};
+
 use headers::*;
 
 #[cfg(test)]
@@ -31,7 +33,7 @@ pub struct Request<'a> {
 }
 
 impl<'a> Request<'a> {
-    pub fn read_from<T: io::Read + 'a>(from: T) -> Result<Request<'a>, ParseRequestError> {
+    pub fn read_from<T: io::Read + 'a>(from: T) -> Result<Request<'a>, ParseError> {
         debug!("parsing request");
         let mut reader = io::BufReader::new(from);
         let request_line = match HttpRequestLine::read_from(&mut reader) {
@@ -56,7 +58,7 @@ impl<'a> Request<'a> {
         Ok(request)
     }
 
-    pub fn read_from_str(from: &str) -> Result<Request<'_>, ParseRequestError> {
+    pub fn read_from_str(from: &str) -> Result<Request<'_>, ParseError> {
         Request::read_from(Cursor::new(from))
     }
 }
@@ -69,21 +71,15 @@ struct HttpRequestLine {
 }
 
 impl HttpRequestLine {
-    fn read_from<T: io::Read>(
-        from: &mut io::BufReader<T>,
-    ) -> Result<HttpRequestLine, ParseRequestError> {
+    fn read_from<T: io::Read>(from: &mut io::BufReader<T>) -> Result<HttpRequestLine, ParseError> {
         // Request-Line   = Method SP Request-URI SP HTTP-Version CRLF
         // https://www.w3.org/Protocols/rfc2616/rfc2616-sec5.html
 
-        // Parsing the request line this way is not fast, but the objective is
-        // to make it clear not performant.
         let mut method = Vec::new();
         if let Err(err) = from.read_until(b' ', &mut method) {
             return Err(Unknow(err.to_string()));
         };
-        // It could by an EOF, so an empty request.
         if method.is_empty() {
-            //return Err(Unknow(String::from("connection closed")));
             return Err(ConnectionClosed);
         }
         if method.len() < 2 {
@@ -144,7 +140,7 @@ impl<'a> Body<'a> {
     pub fn read_from<T: io::Read + 'a>(
         from: T,
         headers: &HttpHeaders,
-    ) -> Result<Option<Body<'a>>, ParseRequestError> {
+    ) -> Result<Option<Body<'a>>, ParseError> {
         if let Some(encoding) = headers.get("Transfer-Enconding") {
             // Transfer-Enconding entity is not supported.
             if encoding.len() != 1 {
@@ -188,7 +184,7 @@ impl<'a> Body<'a> {
         from: impl Read + 'a,
         mtype: mime::Mime,
         len: u64,
-    ) -> Result<Option<Body<'a>>, ParseRequestError> {
+    ) -> Result<Option<Body<'a>>, ParseError> {
         let content = Box::new(from.take(len));
         let body = Body {
             content,
@@ -245,14 +241,42 @@ impl<'a> Response<'a> {
             body: None,
         }
     }
+
+    pub fn read_from<T: io::Read + 'a>(from: T) -> Result<Response<'a>, ParseError> {
+        // https://www.w3.org/Protocols/rfc2616/rfc2616-sec6.html
+        //    Status-Line
+        //                    *(( general-header
+        //                     | response-header
+        //                     | entity-header ) CRLF)
+        //                    CRLF
+        //                    [ message-body ]
+        debug!("parsing response");
+        let mut reader = io::BufReader::new(from);
+        let status_line = StatusLine::read_from(&mut reader)?;
+        debug!("response status line parsed: {:?}", status_line);
+
+        let headers = HttpHeaders::read_from(&mut reader)?;
+        debug!("headers parsed: {:?}", headers);
+
+        let body = Body::read_from(reader, &headers)?;
+        debug!("body read, length: {:?}", body);
+
+        let response = Response{
+            body,
+            status: status_line.status_code,
+            headers,
+        };
+        debug!("response parsed: {:?}", response);
+        Ok(response)
+    }   
 }
 
 impl<'a> FromStr for Response<'a> {
-    type Err = ParseError;
+    type Err = Infallible;
     fn from_str(content: &str) -> Result<Response<'a>, Infallible> {
         let content = Vec::from(content);
         let resp = Response {
-            status: StatusCode::Ok,
+            status: StatusCode::OK,
             headers: HttpHeaders::new(),
             body: Some(Body {
                 content_length: content.len() as u64,
@@ -265,21 +289,82 @@ impl<'a> FromStr for Response<'a> {
 }
 
 #[derive(Debug)]
-pub enum StatusCode {
-    Ok,
-    InternalServerError,
-    NotFound,
-    BadRequest,
+struct StatusLine {
+    http_version: String,
+    status_code: StatusCode,
+    reason_phrase: String,
 }
 
-impl fmt::Display for StatusCode {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            StatusCode::Ok => write!(f, "200 OK"),
-            StatusCode::InternalServerError => write!(f, "500 Internal Server Error"),
-            StatusCode::NotFound => write!(f, "404 Not found"),
-            StatusCode::BadRequest => write!(f, "400 Bad Request"),
+impl StatusLine {
+    fn read_from<T: io::Read>(from: &mut io::BufReader<T>) -> Result<StatusLine, ParseError> {
+        // Status-Line = HTTP-Version SP Status-Code SP Reason-Phrase CRLF
+        let mut http_version = Vec::new();
+        if let Err(err) = from.read_until(b' ', &mut http_version) {
+            return Err(Unknow(err.to_string()));
+        };
+
+        if http_version.is_empty() {
+            return Err(ConnectionClosed);
         }
+
+        let http_version= String::from_utf8_lossy(&http_version).to_string();
+        Self::validate_version(&http_version)?;
+        let mut status_code = Vec::new();
+        if let Err(err) = from.read_until(b' ', &mut status_code) {
+            return Err(Unknow(err.to_string()));
+        };
+        let status_code = String::from_utf8_lossy(&status_code).to_string();
+        if status_code.len() != 4 {
+            return Err(Unknow(format!("invalid status code: {}", status_code)));
+        };
+        let status_code = match status_code.parse::<usize>() {
+            Err(error) => return Err(Unknow(error.to_string())),
+            Ok(code) => code,
+        };
+        let status_code = StatusCode::from(status_code);
+        let mut reason_phrase = Vec::new();
+        if let Err(err) = from.read_until(b'\n', &mut reason_phrase) {
+            return Err(Unknow(err.to_string()));
+        };
+        if reason_phrase.len() < 3 {
+            return Err(Unknow(String::from("invalid reason phrase")));
+        };
+        let reason_phrase = String::from_utf8_lossy(&reason_phrase[..reason_phrase.len() - 2]).to_string();
+        Ok(
+           StatusLine { http_version, status_code, reason_phrase}
+        )
+    }
+
+    fn validate_version(version: &String) -> Result<(), ParseError> {
+        // https://www.w3.org/Protocols/rfc2616/rfc2616-sec3.html
+        // HTTP-Version   = "HTTP" "/" 1*DIGIT "." 1*DIGIT
+        let parts: Vec<&str> = version.split("/").collect();
+        if parts.len() != 2 {
+            return Err(Unknow(format!("invalid http version: {}", version)));
+        };
+        if parts[0] != "HTTP" {
+            return Err(Unknow(format!("invalid http version: {}", version)));
+        };
+
+        let digits_parts: Vec<&str> = parts[1].split(".").collect();
+        if digits_parts.len() != 2 {
+            return Err(Unknow(format!("invalid http version: {}", version)));
+        }
+
+        if let Err(error) =  digits_parts[0].parse::<u8>() {
+                return Err(Unknow(format!(
+                    "invalid http version: {} {}",
+                    version, error
+                )))
+        }
+
+        if let Err(error) =  digits_parts[1].parse::<u8>() {
+                return Err(Unknow(format!(
+                    "invalid http version: {} {}",
+                    version, error
+                )))
+        }
+        Ok(())
     }
 }
 

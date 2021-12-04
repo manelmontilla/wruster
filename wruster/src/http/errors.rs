@@ -3,12 +3,12 @@ use std::fmt;
 use std::fmt::Debug;
 
 #[derive(Debug, PartialEq)]
-pub enum ParseRequestError {
+pub enum ParseError {
     Unknow(String),
     ConnectionClosed,
 }
 
-impl fmt::Display for ParseRequestError {
+impl fmt::Display for ParseError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Unknow(msg) => write!(f, "{}", msg),
@@ -17,4 +17,4 @@ impl fmt::Display for ParseRequestError {
     }
 }
 
-impl Error for ParseRequestError {}
+impl Error for ParseError {}

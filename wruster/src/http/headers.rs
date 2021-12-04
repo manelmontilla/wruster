@@ -4,7 +4,7 @@ use std::fmt::Debug;
 use std::io;
 use std::io::prelude::*;
 
-use super::errors::ParseRequestError::Unknow;
+use super::errors::ParseError::Unknow;
 use super::errors::*;
 use super::HttpMessageChar;
 use super::ServerResult;
@@ -25,9 +25,7 @@ impl HttpHeaders {
         self.headers.iter()
     }
 
-    pub fn read_from<T: io::Read>(
-        from: &mut io::BufReader<T>,
-    ) -> Result<HttpHeaders, ParseRequestError> {
+    pub fn read_from<T: io::Read>(from: &mut io::BufReader<T>) -> Result<HttpHeaders, ParseError> {
         let mut headers = Self::new();
         // https://www.w3.org/Protocols/rfc2616/rfc2616-sec4.html#sec4.5:
         // generic-message = start-line
@@ -103,7 +101,7 @@ pub struct HttpHeader {
 impl HttpHeader {
     pub fn read_from<T: io::Read>(
         from: &mut io::BufReader<T>,
-    ) -> Result<Option<HttpHeader>, ParseRequestError> {
+    ) -> Result<Option<HttpHeader>, ParseError> {
         //generic-message = start-line
         //                  *(message-header CRLF)
         //                   CRLF
@@ -128,7 +126,7 @@ impl HttpHeader {
         HttpHeader::parse_header_line(line)
     }
 
-    fn parse_header_line(line: Vec<u8>) -> Result<Option<HttpHeader>, ParseRequestError> {
+    fn parse_header_line(line: Vec<u8>) -> Result<Option<HttpHeader>, ParseError> {
         // header-field   = field-name ":" OWS field-value OWS
         // field-name     = token
         // field-value    = *( field-content / obs-fold )

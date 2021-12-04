@@ -137,7 +137,7 @@ fn http_response_write() {
         value: String::from("8"),
     });
     let mut response = Response {
-        status: StatusCode::Ok,
+        status: StatusCode::OK,
         headers: headers,
         body: Some(body),
     };
@@ -158,7 +158,7 @@ fn http_response_write_empty_body() {
         value: String::from("Some-value"),
     });
     let mut response = Response {
-        status: StatusCode::Ok,
+        status: StatusCode::OK,
         headers: headers,
         body: None,
     };
@@ -175,7 +175,7 @@ fn http_response_write_empty_body() {
 fn http_response_no_headers_no_body() {
     let headers = HttpHeaders::new();
     let mut response = Response {
-        status: StatusCode::Ok,
+        status: StatusCode::OK,
         headers: headers,
         body: None,
     };
