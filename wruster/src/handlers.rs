@@ -49,7 +49,7 @@ pub fn serve_static(dir: &str, request: &Request) -> Response<'static> {
         value: mime_type.to_string(),
     });
     Response {
-        status: StatusCode::Ok,
+        status: StatusCode::OK,
         headers,
         body: Some(Body {
             content_length: metadata.len(),
@@ -58,7 +58,6 @@ pub fn serve_static(dir: &str, request: &Request) -> Response<'static> {
         }),
     }
 }
-
 
 pub fn log_middleware(handler: HttpHandler) -> HttpHandler {
     Box::new(move |request: Request| {

@@ -261,14 +261,14 @@ impl<'a> Response<'a> {
         let body = Body::read_from(reader, &headers)?;
         debug!("body read, length: {:?}", body);
 
-        let response = Response{
+        let response = Response {
             body,
             status: status_line.status_code,
             headers,
         };
         debug!("response parsed: {:?}", response);
         Ok(response)
-    }   
+    }
 }
 
 impl<'a> FromStr for Response<'a> {
@@ -307,7 +307,7 @@ impl StatusLine {
             return Err(ConnectionClosed);
         }
 
-        let http_version= String::from_utf8_lossy(&http_version).to_string();
+        let http_version = String::from_utf8_lossy(&http_version).to_string();
         Self::validate_version(&http_version)?;
         let mut status_code = Vec::new();
         if let Err(err) = from.read_until(b' ', &mut status_code) {
@@ -329,10 +329,13 @@ impl StatusLine {
         if reason_phrase.len() < 3 {
             return Err(Unknow(String::from("invalid reason phrase")));
         };
-        let reason_phrase = String::from_utf8_lossy(&reason_phrase[..reason_phrase.len() - 2]).to_string();
-        Ok(
-           StatusLine { http_version, status_code, reason_phrase}
-        )
+        let reason_phrase =
+            String::from_utf8_lossy(&reason_phrase[..reason_phrase.len() - 2]).to_string();
+        Ok(StatusLine {
+            http_version,
+            status_code,
+            reason_phrase,
+        })
     }
 
     fn validate_version(version: &String) -> Result<(), ParseError> {
@@ -351,18 +354,18 @@ impl StatusLine {
             return Err(Unknow(format!("invalid http version: {}", version)));
         }
 
-        if let Err(error) =  digits_parts[0].parse::<u8>() {
-                return Err(Unknow(format!(
-                    "invalid http version: {} {}",
-                    version, error
-                )))
+        if let Err(error) = digits_parts[0].parse::<u8>() {
+            return Err(Unknow(format!(
+                "invalid http version: {} {}",
+                version, error
+            )));
         }
 
-        if let Err(error) =  digits_parts[1].parse::<u8>() {
-                return Err(Unknow(format!(
-                    "invalid http version: {} {}",
-                    version, error
-                )))
+        if let Err(error) = digits_parts[1].parse::<u8>() {
+            return Err(Unknow(format!(
+                "invalid http version: {} {}",
+                version, error
+            )));
         }
         Ok(())
     }

@@ -1,8 +1,8 @@
-use std::io::Write;
 use std::net;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::{io::Write, time};
 
 #[macro_use]
 extern crate log;
@@ -15,7 +15,13 @@ mod thread_pool;
 use http::*;
 use router::{Normalize, Router};
 
-pub fn run_and_serve(addr: &str, routes: Router) -> ServerResult {
+const DEFAULT_IDLE_TIMEOUT: time::Duration = time::Duration::from_secs(10);
+
+pub fn run_and_serve(
+    addr: &str,
+    routes: Router,
+    idle_timeout: Option<time::Duration>,
+) -> ServerResult {
     let listener = match net::TcpListener::bind(addr) {
         Ok(listener) => listener,
         Err(err) => return Err(Box::new(err)),
@@ -30,6 +36,10 @@ pub fn run_and_serve(addr: &str, routes: Router) -> ServerResult {
         };
         info!("accepting connection from {}", src_addr);
         let cconfig = Arc::clone(&config);
+        let timeout = idle_timeout.unwrap_or(DEFAULT_IDLE_TIMEOUT);
+        if let Err(err) = stream.set_read_timeout(Some(timeout)) {
+            error!("setting iddle timeout for a connection {}", err.to_string());
+        }
         let action = move || {
             handle_conversation(stream, cconfig, src_addr);
         };
@@ -58,17 +68,17 @@ fn handle_connection(
     source_addr: SocketAddr,
 ) -> bool {
     let mut connection_open = false;
-    let mut response = match read_request(&stream) {
+    let mut response = match Request::read_from(stream) {
         Ok(request) => {
             connection_open = is_connection_alive(&request);
             run_action(request, routes)
         }
         Err(err) => match err {
-            errors::ParseRequestError::Unknow(err) => {
+            errors::ParseError::Unknow(err) => {
                 error!("error reading request, error info: {}", err);
                 Response::from_status(StatusCode::BadRequest)
             }
-            errors::ParseRequestError::ConnectionClosed => return false,
+            errors::ParseError::ConnectionClosed => return false,
         },
     };
     // TODO: Handle error cloning the stream.
@@ -81,13 +91,6 @@ fn handle_connection(
         return false;
     };
     connection_open
-}
-
-fn read_request(stream: &net::TcpStream) -> Result<Request, errors::ParseRequestError> {
-    match Request::read_from(stream) {
-        Err(err) => Err(err),
-        Ok(request) => Ok(request),
-    }
 }
 
 fn run_action(mut request: Request<'_>, routes: Arc<Router>) -> Response<'_> {
@@ -116,6 +119,8 @@ fn run_action(mut request: Request<'_>, routes: Arc<Router>) -> Response<'_> {
 fn is_connection_alive(request: &http::Request) -> bool {
     match request.headers.get("Connection") {
         None => false,
-        Some(values) => values.iter().any(|value| value == "keep-alive"),
+        Some(values) => values
+            .iter()
+            .any(|value| value.to_lowercase() == "keep-alive"),
     }
 }

@@ -27,7 +27,7 @@ fn main() {
     let serve_dir: HttpHandler =
         log_middleware(Box::new(move |request| serve_static(&dir, &request)));
     routes.add("/", http::HttpMethod::GET, serve_dir);
-    if let Err(err) = run_and_serve(addr, routes) {
+    if let Err(err) = run_and_serve(addr, routes, None) {
         error!("error running wruster {}", err.to_string());
         process::exit(1);
     }
