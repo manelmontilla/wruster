@@ -1,7 +1,7 @@
 use std::convert::From;
 use std::fmt;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum StatusCode {
     // https://www.w3.org/Protocols/rfc2616/rfc2616-sec6.html
     Continue,

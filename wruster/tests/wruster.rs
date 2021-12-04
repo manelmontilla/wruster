@@ -1,5 +1,6 @@
 use std::env;
 use std::error::Error;
+use std::io::ErrorKind;
 use std::io::Write;
 use std::net::Shutdown;
 use std::net::TcpStream;
@@ -41,6 +42,9 @@ Content-Length: 4\r\n\
 test";
     client.connect().unwrap();
     client.send(request.as_bytes()).unwrap();
+    let stream = client.stream().unwrap();
+    let response = Response::read_from(stream).unwrap();
+    assert_eq!(response.status, StatusCode::RequestTimeOut);
     handle.join().unwrap();
 }
 
@@ -54,6 +58,15 @@ impl TcpClient {
         let stream = TcpStream::connect(&self.addr)?;
         self.stream = Some(stream);
         Ok(())
+    }
+
+    pub fn stream(&mut self) -> Result<TcpStream, Box<dyn Error>> {
+      let stream = match &self.stream {
+          None => return Err(Box::new(std::io::Error::new(ErrorKind::Other, "client not connected"))),
+          Some(stream) => stream
+      };
+      let stream = stream.try_clone()?;
+      Ok(stream)
     }
 
     pub fn send(&mut self, data: &[u8]) -> Result<(), Box<dyn Error>> {
