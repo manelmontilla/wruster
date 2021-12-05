@@ -30,7 +30,7 @@ fn accepts_connection() {
         routes.add("/", http::HttpMethod::POST, serve_dir);
         run_and_serve("127.0.0.1:8081", routes, Some(time::Duration::from_secs(1))).unwrap();
     });
-    thread::sleep(time::Duration::from_secs(1));
+    thread::sleep(time::Duration::from_secs(5));
     let mut client = TcpClient {
         addr: String::from("127.0.0.1:8081"),
         stream: None,

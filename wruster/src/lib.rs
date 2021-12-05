@@ -26,6 +26,7 @@ pub fn run_and_serve(
         Ok(listener) => listener,
         Err(err) => return Err(Box::new(err)),
     };
+    
     info!("listening on {}", &addr);
     let config = Arc::new(routes);
     let mut pool = thread_pool::Pool::new(5);

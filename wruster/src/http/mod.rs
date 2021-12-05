@@ -307,16 +307,18 @@ impl StatusLine {
             return Err(ConnectionClosed);
         }
 
-        let http_version = String::from_utf8_lossy(&http_version).to_string();
+        let mut http_version = String::from_utf8_lossy(&http_version).to_string();
+        http_version = http_version.trim_end().to_string();
         Self::validate_version(&http_version)?;
         let mut status_code = Vec::new();
         if let Err(err) = from.read_until(b' ', &mut status_code) {
             return Err(Unknow(err.to_string()));
         };
-        let status_code = String::from_utf8_lossy(&status_code).to_string();
+        let mut status_code = String::from_utf8_lossy(&status_code).to_string();
         if status_code.len() != 4 {
             return Err(Unknow(format!("invalid status code: {}", status_code)));
         };
+        status_code = status_code.trim_end().to_string();
         let status_code = match status_code.parse::<usize>() {
             Err(error) => return Err(Unknow(error.to_string())),
             Ok(code) => code,
