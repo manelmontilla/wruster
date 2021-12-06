@@ -1,14 +1,13 @@
-use std::env;
 use std::error::Error;
 use std::io::ErrorKind;
 use std::io::Write;
-use std::net::Shutdown;
-use std::net::TcpStream;
+use std::net::{Ipv4Addr, Shutdown, SocketAddrV4, TcpListener, TcpStream};
 use std::thread;
 use std::time;
 
-use wruster::handlers::{log_middleware, serve_static};
 use wruster::http;
+use wruster::http::headers::HttpHeader;
+use wruster::http::headers::HttpHeaders;
 use wruster::http::Response;
 use wruster::http::StatusCode;
 use wruster::router;
@@ -16,23 +15,18 @@ use wruster::router::HttpHandler;
 use wruster::*;
 
 #[test]
-fn accepts_connection() {
-    env::set_var("RUST_LOG", "debug");
-    env_logger::init();
+fn server_honors_idle_timeout() {
     let mut server = Server::new();
     let routes = router::Router::new();
-    let serve_dir: HttpHandler =
-        // log_middleware(Box::new(move |request| serve_static("./", &request)));
-        Box::new(move |_request| {
-          println!("Request received");
-          Response::from_status(StatusCode::OK)
-        });
+    let serve_dir: HttpHandler = Box::new(move |_| Response::from_status(StatusCode::OK));
     routes.add("/", http::HttpMethod::POST, serve_dir);
+    let port = get_free_port();
+    let addr = format!("127.0.0.1:{}", port.to_string());
     server
-        .run_and_serve("127.0.0.1:8081", routes, Some(time::Duration::from_secs(1)))
+        .run(&addr, routes, Some(time::Duration::from_secs(1)))
         .unwrap();
 
-    thread::sleep(time::Duration::from_secs(5));
+    thread::sleep(time::Duration::from_secs(1));
     let mut client = TcpClient {
         addr: String::from("127.0.0.1:8081"),
         stream: None,
@@ -45,24 +39,80 @@ test";
     client.connect().unwrap();
     client.send(request.as_bytes()).unwrap();
     let stream = client.stream().unwrap();
+    let _ = Response::read_from(stream).unwrap();
+    // From here after 1 sec the connection with the client must be closed.
+    thread::sleep(time::Duration::from_secs(2));
+    assert_eq!(client.is_closed(), false);
+    server.shutdown().unwrap()
+}
+
+#[test]
+fn server_handles_requests() {
+    let mut server = Server::new();
+    let routes = router::Router::new();
+    let handler: HttpHandler = Box::new(move |request| {
+        let mut content: Vec<u8> = Vec::new();
+        request
+            .body
+            .unwrap()
+            .content
+            .read_to_end(&mut content)
+            .unwrap();
+        let content = String::from_utf8_lossy(&content);
+        print!("content {}", content);
+        if &content == "test" {
+            Response::from_status(StatusCode::OK)
+        } else {
+            Response::from_status(StatusCode::InternalServerError)
+        }
+    });
+    let port = get_free_port();
+    let addr = format!("127.0.0.1:{}", port.to_string());
+    routes.add("/", http::HttpMethod::POST, handler);
+    server.run(&addr, routes, None).unwrap();
+
+    thread::sleep(time::Duration::from_secs(1));
+    let mut client = TcpClient {
+        addr: addr,
+        stream: None,
+    };
+    let request = "POST / HTTP/1.1\r\n\
+Content-Length: 4\r\n\
+\r\n\
+test";
+    client.connect().unwrap();
+    client.send(request.as_bytes()).unwrap();
+    let stream = client.stream().unwrap();
     let response = Response::read_from(stream).unwrap();
-    //assert_eq!(response.status, StatusCode::RequestTimeOut);
+    assert_eq!(response.status, StatusCode::OK);
+    let got_headers = response
+        .headers
+        .iter()
+        .collect::<Vec<(&String, &Vec<String>)>>();
+    let mut want_headers = HttpHeaders::new();
+    let header = HttpHeader {
+        name: "Content-Length".to_string(),
+        value: "0".to_string(),
+    };
+    want_headers.add_header(header);
+    let want_headers = want_headers
+        .iter()
+        .collect::<Vec<(&String, &Vec<String>)>>();
+    assert_eq!(got_headers, want_headers);
+    assert!(response.body.is_none());
     server.shutdown().unwrap()
 }
 
 #[test]
 fn server_shutdowns() {
-    env::set_var("RUST_LOG", "debug");
-    env_logger::init();
     let mut server = Server::new();
     let routes = router::Router::new();
     server
-        .run_and_serve("127.0.0.1:8081", routes, Some(time::Duration::from_secs(1)))
+        .run("127.0.0.1:8081", routes, Some(time::Duration::from_secs(1)))
         .unwrap();
     thread::sleep(time::Duration::from_secs(2));
     server.shutdown().unwrap()
 }
-
 
 struct TcpClient {
     pub addr: String,
@@ -97,6 +147,12 @@ impl TcpClient {
         Ok(())
     }
 
+    pub fn is_closed(&self) -> bool {
+        let stream = self.stream.as_ref().expect("call connect first");
+        stream.peer_addr().unwrap();
+        return false;
+    }
+
     pub fn close(&mut self) -> Result<(), Box<dyn Error>> {
         let stream = self.stream.as_mut().unwrap();
         stream.shutdown(Shutdown::Both)?;
@@ -108,4 +164,13 @@ impl Drop for TcpClient {
     fn drop(&mut self) {
         self.close();
     }
+}
+
+fn get_free_port() -> u16 {
+    let addr = SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0);
+    TcpListener::bind(addr)
+        .unwrap()
+        .local_addr()
+        .unwrap()
+        .port()
 }

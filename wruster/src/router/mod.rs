@@ -175,7 +175,7 @@ mod tests {
         let request = Request {
             body: Some(Body {
                 content: Box::new(Cursor::new(content)),
-                content_type: mime::TEXT_PLAIN,
+                content_type: Some(mime::TEXT_PLAIN),
                 content_length: content.len() as u64,
             }),
             method: HttpMethod::POST,

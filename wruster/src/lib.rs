@@ -1,9 +1,8 @@
 use std::io::{Error, ErrorKind};
 use std::net::{SocketAddr, TcpStream};
-use std::os::unix::io::AsRawFd;
 use std::path::PathBuf;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::thread::JoinHandle;
 use std::{io::Write, time};
 use std::{net, thread};
@@ -32,10 +31,10 @@ impl Server {
         let stop = Arc::new(AtomicBool::new(false));
         let handle = None;
         let addr = None;
-        Server { stop, addr, handle, }
+        Server { stop, addr, handle }
     }
 
-    pub fn run_and_serve(
+    pub fn run(
         &mut self,
         addr: &str,
         routes: Router,
@@ -72,16 +71,33 @@ impl Server {
         self.addr = Some(String::from(addr));
         Ok(())
     }
+
     pub fn shutdown(self) -> ServerResult {
-        if let None = self.handle {
+        if self.handle.is_none() {
             let err = Box::new(Error::new(ErrorKind::Other, "server not started"));
-            return Err(err)
+            return Err(err);
         }
         self.stop.as_ref().store(true, Ordering::SeqCst);
         TcpStream::connect(self.addr.unwrap()).unwrap();
         let handle = self.handle.unwrap();
         handle.join().unwrap()?;
         Ok(())
+    }
+
+    pub fn wait(self) -> ServerResult {
+        if self.handle.is_none() {
+            let err = Box::new(Error::new(ErrorKind::Other, "server not started"));
+            return Err(err);
+        }
+        let handle = self.handle.unwrap();
+        handle.join().unwrap()?;
+        Ok(())
+    }
+}
+
+impl Default for Server {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

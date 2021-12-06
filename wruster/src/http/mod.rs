@@ -3,12 +3,9 @@ use std::io::{prelude::*, Cursor};
 
 use std::convert::Infallible;
 use std::error::Error;
+use std::fmt;
 use std::fmt::Debug;
-use std::fmt::{self};
-
 use std::str::FromStr;
-
-use std::os::unix::io::AsRawFd;
 
 pub mod errors;
 pub mod headers;
@@ -125,7 +122,7 @@ impl HttpRequestLine {
 }
 
 pub struct Body<'a> {
-    pub content_type: mime::Mime,
+    pub content_type: Option<mime::Mime>,
     pub content_length: u64,
     pub content: Box<dyn Read + 'a>,
 }
@@ -173,25 +170,35 @@ impl<'a> Body<'a> {
             }
             Ok(size) => size,
         };
+        if len == 0 {
+            return Ok(None);
+        }
+        let content_type = match headers.get("Content-Type") {
+            None => None,
+            Some(types) => {
+                if types.is_empty() {
+                    let msg = format!("invalid Content-Type header, {:?}", types);
+                    return Err(Unknow(msg));
+                };
+                let mtype: mime::Mime = match types[0].parse() {
+                    Ok(t) => t,
+                    Err(err) => {
+                        let msg = format!(
+                            "invalid Content-Type header, {:?}, {}",
+                            types,
+                            err.to_string()
+                        );
+                        return Err(Unknow(msg));
+                    }
+                };
+                Some(mtype)
+            }
+        };
         let c = from.take(len as u64);
         let body = Body {
             content: Box::new(c),
+            content_type,
             content_length: len as u64,
-            content_type: mime::TEXT_PLAIN,
-        };
-        Ok(Some(body))
-    }
-
-    pub fn read_from_len(
-        from: impl Read + 'a,
-        mtype: mime::Mime,
-        len: u64,
-    ) -> Result<Option<Body<'a>>, ParseError> {
-        let content = Box::new(from.take(len));
-        let body = Body {
-            content,
-            content_length: len,
-            content_type: mtype,
         };
         Ok(Some(body))
     }
@@ -201,7 +208,7 @@ impl fmt::Debug for Body<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "content-type: {}, content-length: {}, content: ....",
+            "content-type: {:?}, content-length: {}, content: ....",
             self.content_type, self.content_length
         )
     }
@@ -282,7 +289,7 @@ impl<'a> FromStr for Response<'a> {
             headers: HttpHeaders::new(),
             body: Some(Body {
                 content_length: content.len() as u64,
-                content_type: mime::TEXT_PLAIN,
+                content_type: Some(mime::TEXT_PLAIN),
                 content: Box::new(Cursor::new(content)),
             }),
         };
@@ -342,10 +349,10 @@ impl StatusLine {
         })
     }
 
-    fn validate_version(version: &String) -> Result<(), ParseError> {
+    fn validate_version(version: &str) -> Result<(), ParseError> {
         // https://www.w3.org/Protocols/rfc2616/rfc2616-sec3.html
         // HTTP-Version   = "HTTP" "/" 1*DIGIT "." 1*DIGIT
-        let parts: Vec<&str> = version.split("/").collect();
+        let parts: Vec<&str> = version.split('/').collect();
         if parts.len() != 2 {
             return Err(Unknow(format!("invalid http version: {}", version)));
         };
@@ -353,7 +360,7 @@ impl StatusLine {
             return Err(Unknow(format!("invalid http version: {}", version)));
         };
 
-        let digits_parts: Vec<&str> = parts[1].split(".").collect();
+        let digits_parts: Vec<&str> = parts[1].split('.').collect();
         if digits_parts.len() != 2 {
             return Err(Unknow(format!("invalid http version: {}", version)));
         }

@@ -112,7 +112,7 @@ fn http_body_write() {
     let content = "#wruster";
     let mut body = Body {
         content: Box::new(Cursor::new(content)),
-        content_type: mime::TEXT_PLAIN,
+        content_type: Some(mime::TEXT_PLAIN),
         content_length: content.len() as u64,
     };
     let mut to: Vec<u8> = Vec::new();
@@ -127,7 +127,7 @@ fn http_response_write() {
     let content = "#wruster";
     let body = Body {
         content: Box::new(Cursor::new(content)),
-        content_type: mime::TEXT_PLAIN,
+        content_type: Some(mime::TEXT_PLAIN),
         content_length: content.len() as u64,
     };
 
@@ -152,11 +152,7 @@ fn http_response_write() {
 
 #[test]
 fn http_response_write_empty_body() {
-    let mut headers = HttpHeaders::new();
-    headers.add_header(HttpHeader {
-        name: String::from("Some"),
-        value: String::from("Some-value"),
-    });
+    let headers = HttpHeaders::new();
     let mut response = Response {
         status: StatusCode::OK,
         headers: headers,
@@ -167,7 +163,7 @@ fn http_response_write_empty_body() {
     response.write(&mut to).unwrap();
 
     let got = String::from_utf8(to).unwrap();
-    let want = "HTTP/1.1 200 OK\r\nSome: Some-value\r\n\r\n";
+    let want = "HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n";
     assert_eq!(want, &got)
 }
 
@@ -182,6 +178,21 @@ fn http_response_no_headers_no_body() {
     let mut to: Vec<u8> = Vec::new();
     response.write(&mut to).unwrap();
     let got = String::from_utf8(to).unwrap();
-    let want = "HTTP/1.1 200 OK\r\n\r\n";
+    let want = "HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n";
     assert_eq!(want, &got)
+}
+
+#[test]
+fn body_read_from_invalid_content_type() {
+    let from = Cursor::new("test");
+    let mut headers = HttpHeaders::new();
+    headers.add_header(HttpHeader {
+        name: "Content-Type".to_string(),
+        value: "invalid".to_string(),
+    });
+    headers.add_header(HttpHeader {
+        name: "Content-Length".to_string(),
+        value: "4".to_string(),
+    });
+    assert!(Body::read_from(from, &headers).is_err(), "");
 }

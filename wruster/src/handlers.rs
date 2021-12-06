@@ -53,7 +53,7 @@ pub fn serve_static(dir: &str, request: &Request) -> Response<'static> {
         headers,
         body: Some(Body {
             content_length: metadata.len(),
-            content_type: mime_type,
+            content_type: Some(mime_type),
             content: body,
         }),
     }
