@@ -13,7 +13,6 @@ extern crate log;
 
 fn main() {
     env_logger::init();
-
     let args: Vec<String> = env::args().collect();
     if args.len() != 3 {
         eprintln!("usage: wruster ip:port directory");
@@ -21,7 +20,6 @@ fn main() {
     }
     let addr = &args[1];
     let dir = &args[2];
-
     let routes = router::Router::new();
     let dir = dir.clone();
     let serve_dir: HttpHandler =
