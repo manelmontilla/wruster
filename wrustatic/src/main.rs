@@ -15,7 +15,7 @@ fn main() {
     env_logger::init();
     let args: Vec<String> = env::args().collect();
     if args.len() != 3 {
-        eprintln!("usage: wruster ip:port directory");
+        eprintln!("usage: wrustatic ip/host:port directory");
         process::exit(1);
     }
     let addr = &args[1];
