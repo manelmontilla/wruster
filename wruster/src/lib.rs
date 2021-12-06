@@ -1,8 +1,9 @@
 use std::io::{Error, ErrorKind};
-use std::net::SocketAddr;
+use std::net::{SocketAddr, TcpStream};
 use std::os::unix::io::AsRawFd;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread::JoinHandle;
 use std::{io::Write, time};
 use std::{net, thread};
@@ -21,15 +22,17 @@ use router::{Normalize, Router};
 const DEFAULT_IDLE_TIMEOUT: time::Duration = time::Duration::from_secs(10);
 
 pub struct Server {
-    thandle: Option<JoinHandle<Result<(), Box<Error>>>>,
-    fd: i32,
+    stop: Arc<AtomicBool>,
+    addr: Option<String>,
+    handle: Option<JoinHandle<Result<(), Box<Error>>>>,
 }
 
 impl Server {
     pub fn new() -> Self {
-        let thandle = None;
-        let fd: i32 = 0;
-        Server { thandle, fd }
+        let stop = Arc::new(AtomicBool::new(false));
+        let handle = None;
+        let addr = None;
+        Server { stop, addr, handle, }
     }
 
     pub fn run_and_serve(
@@ -42,48 +45,42 @@ impl Server {
             Ok(listener) => listener,
             Err(err) => return Err(Box::new(err)),
         };
-        let fd = listener.as_raw_fd();
         info!("listening on {}", &addr);
         let routes = Arc::new(routes);
         let mut pool = thread_pool::Pool::new(5);
+        let stop = Arc::clone(&self.stop);
         let handle = thread::spawn(move || loop {
             let (stream, src_addr) = match listener.accept() {
                 Err(err) => return Err(Box::new(err)),
                 Ok(connection) => connection,
             };
+            if stop.as_ref().load(Ordering::SeqCst) {
+                return Ok(());
+            }
             info!("accepting connection from {}", src_addr);
             let cconfig = Arc::clone(&routes);
             let timeout = idle_timeout.unwrap_or(DEFAULT_IDLE_TIMEOUT);
             if let Err(err) = stream.set_read_timeout(Some(timeout)) {
-                error!("setting iddle timeout for a connection {}", err.to_string());
+                panic!("setting idle timeout for  connections {}", err.to_string());
             }
             let action = move || {
                 handle_conversation(stream, cconfig, src_addr);
             };
             pool.run(Box::new(action));
         });
-        self.thandle = Some(handle);
-        self.fd = fd;
+        self.handle = Some(handle);
+        self.addr = Some(String::from(addr));
         Ok(())
     }
     pub fn shutdown(self) -> ServerResult {
-        if self.fd == 0 || self.thandle.is_none() {
-            let error = Error::new(ErrorKind::Other, "server note started");
-            return Err(Box::new(error));
+        if let None = self.handle {
+            let err = Box::new(Error::new(ErrorKind::Other, "server not started"));
+            return Err(err)
         }
-        let mut r: libc::c_int = 0;
-        unsafe {
-            r = libc::shutdown(self.fd, libc::SHUT_RD);
-        };
-        if r < 0 {
-            // let error = Error::new(ErrorKind::Other, "error shutting down server");
-            let error = Error::last_os_error();
-            if error.kind() != ErrorKind::NotConnected {
-                return Err(Box::new(error));
-            }
-        };
-        let handle = self.thandle.unwrap();
-        handle.join().unwrap().unwrap();
+        self.stop.as_ref().store(true, Ordering::SeqCst);
+        TcpStream::connect(self.addr.unwrap()).unwrap();
+        let handle = self.handle.unwrap();
+        handle.join().unwrap()?;
         Ok(())
     }
 }

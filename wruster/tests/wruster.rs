@@ -59,7 +59,7 @@ fn server_shutdowns() {
     server
         .run_and_serve("127.0.0.1:8081", routes, Some(time::Duration::from_secs(1)))
         .unwrap();
-    thread::sleep(time::Duration::from_secs(5));
+    thread::sleep(time::Duration::from_secs(2));
     server.shutdown().unwrap()
 }
 
