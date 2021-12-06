@@ -143,9 +143,9 @@ impl From<usize> for StatusCode {
     }
 }
 
-impl Into<usize> for &StatusCode {
-    fn into(self) -> usize {
-        match self {
+impl From<&StatusCode> for usize {
+    fn from(code: &StatusCode) -> Self {
+         match code {
             StatusCode::Continue => 100,
             StatusCode::SwitchingProtocols => 101,
             StatusCode::OK => 200,
