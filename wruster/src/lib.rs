@@ -1,8 +1,11 @@
-use std::net;
+use std::io::{Error, ErrorKind};
 use std::net::SocketAddr;
+use std::os::unix::io::AsRawFd;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::thread::JoinHandle;
 use std::{io::Write, time};
+use std::{net, thread};
 
 #[macro_use]
 extern crate log;
@@ -17,34 +20,71 @@ use router::{Normalize, Router};
 
 const DEFAULT_IDLE_TIMEOUT: time::Duration = time::Duration::from_secs(10);
 
-pub fn run_and_serve(
-    addr: &str,
-    routes: Router,
-    idle_timeout: Option<time::Duration>,
-) -> ServerResult {
-    let listener = match net::TcpListener::bind(addr) {
-        Ok(listener) => listener,
-        Err(err) => return Err(Box::new(err)),
-    };
-    
-    info!("listening on {}", &addr);
-    let config = Arc::new(routes);
-    let mut pool = thread_pool::Pool::new(5);
-    loop {
-        let (stream, src_addr) = match listener.accept() {
+pub struct Server {
+    thandle: Option<JoinHandle<Result<(), Box<Error>>>>,
+    fd: i32,
+}
+
+impl Server {
+    pub fn new() -> Self {
+        let thandle = None;
+        let fd: i32 = 0;
+        Server { thandle, fd }
+    }
+
+    pub fn run_and_serve(
+        &mut self,
+        addr: &str,
+        routes: Router,
+        idle_timeout: Option<time::Duration>,
+    ) -> ServerResult {
+        let listener = match net::TcpListener::bind(addr) {
+            Ok(listener) => listener,
             Err(err) => return Err(Box::new(err)),
-            Ok(connection) => connection,
         };
-        info!("accepting connection from {}", src_addr);
-        let cconfig = Arc::clone(&config);
-        let timeout = idle_timeout.unwrap_or(DEFAULT_IDLE_TIMEOUT);
-        if let Err(err) = stream.set_read_timeout(Some(timeout)) {
-            error!("setting iddle timeout for a connection {}", err.to_string());
+        let fd = listener.as_raw_fd();
+        info!("listening on {}", &addr);
+        let routes = Arc::new(routes);
+        let mut pool = thread_pool::Pool::new(5);
+        let handle = thread::spawn(move || loop {
+            let (stream, src_addr) = match listener.accept() {
+                Err(err) => return Err(Box::new(err)),
+                Ok(connection) => connection,
+            };
+            info!("accepting connection from {}", src_addr);
+            let cconfig = Arc::clone(&routes);
+            let timeout = idle_timeout.unwrap_or(DEFAULT_IDLE_TIMEOUT);
+            if let Err(err) = stream.set_read_timeout(Some(timeout)) {
+                error!("setting iddle timeout for a connection {}", err.to_string());
+            }
+            let action = move || {
+                handle_conversation(stream, cconfig, src_addr);
+            };
+            pool.run(Box::new(action));
+        });
+        self.thandle = Some(handle);
+        self.fd = fd;
+        Ok(())
+    }
+    pub fn shutdown(self) -> ServerResult {
+        if self.fd == 0 || self.thandle.is_none() {
+            let error = Error::new(ErrorKind::Other, "server note started");
+            return Err(Box::new(error));
         }
-        let action = move || {
-            handle_conversation(stream, cconfig, src_addr);
+        let mut r: libc::c_int = 0;
+        unsafe {
+            r = libc::shutdown(self.fd, libc::SHUT_RD);
         };
-        pool.run(Box::new(action));
+        if r < 0 {
+            // let error = Error::new(ErrorKind::Other, "error shutting down server");
+            let error = Error::last_os_error();
+            if error.kind() != ErrorKind::NotConnected {
+                return Err(Box::new(error));
+            }
+        };
+        let handle = self.thandle.unwrap();
+        handle.join().unwrap().unwrap();
+        Ok(())
     }
 }
 

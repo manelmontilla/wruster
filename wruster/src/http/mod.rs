@@ -8,6 +8,8 @@ use std::fmt::{self};
 
 use std::str::FromStr;
 
+use std::os::unix::io::AsRawFd;
+
 pub mod errors;
 pub mod headers;
 mod status;
