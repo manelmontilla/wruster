@@ -1,0 +1,279 @@
+use std::io;
+use std::net::TcpStream;
+use std::time::{Duration, Instant};
+
+trait Timeout {
+    fn set_read_timeout(&self, dur: Option<Duration>) -> io::Result<()>;
+    fn set_write_timeout(&self, dur: Option<Duration>) -> io::Result<()>;
+}
+
+impl Timeout for TcpStream {
+    fn set_read_timeout(&self, dur: Option<Duration>) -> io::Result<()> {
+        self.set_read_timeout(dur)
+    }
+
+    fn set_write_timeout(&self, dur: Option<Duration>) -> io::Result<()> {
+        self.set_write_timeout(dur)
+    }
+}
+
+struct TimeoutStream<T: io::Read + io::Write + Timeout> {
+    stream: T,
+    read: Option<Duration>,
+    write: Option<Duration>,
+    ongoing_read: Option<Operation>,
+    ongoing_write: Option<Operation>,
+}
+
+impl<T> TimeoutStream<T>
+where
+    T: io::Read + io::Write + Timeout,
+{
+    fn reset_read(&mut self) {
+        self.ongoing_read = None;
+    }
+
+    fn from(
+        from: T,
+        read_timeout: Option<Duration>,
+        write_timeout: Option<Duration>,
+    ) -> TimeoutStream<T> {
+        TimeoutStream {
+            stream: from,
+            ongoing_read: None,
+            ongoing_write: None,
+            read: read_timeout,
+            write: write_timeout,
+        }
+    }
+}
+
+impl<T> io::Read for TimeoutStream<T>
+where
+    T: io::Read + io::Write + Timeout,
+{
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        // If not setup has set for read, we just pass through to the
+        // underlaying reader.
+        let timeout = match self.read {
+            None => {
+                println!("no read timeout set");
+                return self.stream.read(buf);
+            }
+            Some(timeout) => timeout,
+        };
+        let read = match self.ongoing_read.as_mut() {
+            None => {
+                // if there is no current ongoing read operation create a new
+                // one.
+                self.ongoing_read = Some(Operation::from_timeout(timeout));
+                self.ongoing_read.as_mut().unwrap()
+            }
+            Some(operation) => operation,
+        };
+        let next_timeout = read.next_timeout();
+        if let Err(err) = self.stream.set_read_timeout(Some(next_timeout)) {
+            println!("error setting read timeout");
+            return io::Result::Err(err);
+        }
+        println!("next read timeout set to {:?}", next_timeout);
+        read.start();
+        let res = self.stream.read(buf);
+        read.stop();
+        res
+    }
+}
+
+impl<T> io::Write for TimeoutStream<T>
+where
+    T: io::Read + io::Write + Timeout,
+{
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        // If no timeout has set for write, we just pass through to the
+        // underlaying writer.
+        let timeout = match self.write {
+            None => {
+                println!("no read timeout set");
+                return self.stream.write(buf);
+            }
+            Some(timeout) => timeout,
+        };
+        let write = match self.ongoing_write.as_mut() {
+            None => {
+                // If no timeout has set for write, we just pass through to the
+                // underlaying writer.
+                self.ongoing_write = Some(Operation::from_timeout(timeout));
+                self.ongoing_write.as_mut().unwrap()
+            }
+            Some(operation) => operation,
+        };
+        let next_timeout = write.next_timeout();
+        if let Err(err) = self.stream.set_write_timeout(Some(next_timeout)) {
+            println!("error setting read timeout");
+            return io::Result::Err(err);
+        }
+        println!("next read timeout set to {:?}", next_timeout);
+        write.start();
+        let res = self.stream.write(buf);
+        write.stop();
+        res
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        todo!()
+    }
+}
+
+struct Operation {
+    timeout: Duration,
+    started: Option<Instant>,
+    elapsed_secs: u64,
+}
+
+impl Operation {
+    fn from_timeout(timeout: Duration) -> Operation {
+        Operation {
+            timeout: timeout,
+            started: None,
+            elapsed_secs: 0,
+        }
+    }
+
+    fn next_timeout(&mut self) -> Duration {
+        if self.elapsed_secs >= self.timeout.as_secs() {
+            println!("timeout fired");
+            Duration::from_secs(0)
+        } else {
+            let remaining = self.timeout.as_secs() - self.elapsed_secs;
+            println!(
+                "timeout not fired, remaining secs {}",
+                remaining.to_string()
+            );
+            Duration::from_secs(remaining)
+        }
+    }
+
+    fn start(&mut self) {
+        println!("operation stated");
+        self.started = Some(Instant::now());
+    }
+
+    fn stop(&mut self) {
+        if let Some(started) = self.started {
+            let elapsed = started.elapsed().as_secs();
+            self.elapsed_secs += elapsed;
+            println!(
+                "operation stopped, elapsed_secs updated to {}",
+                self.elapsed_secs.to_string()
+            );
+        } else {
+            println!("operation not initialized stopped");
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::error::Error;
+    use std::io::{BufRead, BufReader, Write};
+    use std::net::{Ipv4Addr, Shutdown, SocketAddrV4, TcpListener};
+    use std::thread;
+
+    use super::*;
+
+    #[test]
+    fn enforces_read_timeouts() {
+        let port = get_free_port();
+        let addr = format!("127.0.0.1:{}", port);
+        let listener = TcpListener::bind(addr.clone()).unwrap();
+        let read_timeout = Duration::from_secs(3);
+        let expected_timeout = read_timeout.clone();
+        let handle = thread::spawn(move || {
+            let (stream, _) = listener.accept().unwrap();
+            let mut tstream = TimeoutStream::from(stream, Some(read_timeout), None);
+            tstream.reset_read();
+            let mut reader = BufReader::new(&mut tstream);
+            let mut content = Vec::new();
+            reader.read_until(b' ', &mut content).unwrap();
+            let first_read = String::from_utf8_lossy(&content);
+            let mut content = Vec::new();
+            let second_read_err = reader
+                .read_until(b' ', &mut content)
+                .expect_err("expected timeout error");
+            (first_read.into_owned(), second_read_err)
+        });
+
+        let mut client = TcpClient::connect(addr.to_string()).unwrap();
+        thread::sleep(Duration::from_secs(1));
+        client.send("test ".as_bytes()).unwrap();
+        thread::sleep(expected_timeout);
+        client.send("this should not get read".as_bytes()).unwrap();
+        let (received, err) = handle.join().unwrap();
+        assert_eq!(received, "test ".to_string());
+        assert_eq!(err.kind(), io::ErrorKind::WouldBlock);
+    }
+
+    struct TcpClient {
+        pub addr: String,
+        stream: Option<TcpStream>,
+    }
+
+    impl TcpClient {
+        pub fn connect(addr: String) -> Result<Self, Box<dyn Error>> {
+            let stream = TcpStream::connect(&addr)?;
+            let stream = Some(stream);
+            Ok(TcpClient {
+                addr: addr,
+                stream: stream,
+            })
+        }
+
+        pub fn stream(&mut self) -> Result<TcpStream, Box<dyn Error>> {
+            let stream = match &self.stream {
+                None => {
+                    return Err(Box::new(std::io::Error::new(
+                        io::ErrorKind::Other,
+                        "client not connected",
+                    )))
+                }
+                Some(stream) => stream,
+            };
+            let stream = stream.try_clone()?;
+            Ok(stream)
+        }
+
+        pub fn send(&mut self, data: &[u8]) -> Result<(), Box<dyn Error>> {
+            let stream = self.stream.as_mut().unwrap();
+            stream.write(data)?;
+            stream.flush()?;
+            Ok(())
+        }
+
+        pub fn is_closed(&self) -> bool {
+            let stream = self.stream.as_ref().expect("call connect first");
+            stream.peer_addr().unwrap();
+            return false;
+        }
+
+        pub fn close(&mut self) -> Result<(), Box<dyn Error>> {
+            let stream = self.stream.as_mut().unwrap();
+            stream.shutdown(Shutdown::Both)?;
+            Ok(())
+        }
+    }
+
+    impl Drop for TcpClient {
+        fn drop(&mut self) {
+            let _ = self.close();
+        }
+    }
+
+    fn get_free_port() -> u16 {
+        let addr = SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0);
+        TcpListener::bind(addr)
+            .unwrap()
+            .local_addr()
+            .unwrap()
+            .port()
+    }
+}

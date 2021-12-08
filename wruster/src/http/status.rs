@@ -145,7 +145,7 @@ impl From<usize> for StatusCode {
 
 impl From<&StatusCode> for usize {
     fn from(code: &StatusCode) -> Self {
-         match code {
+        match code {
             StatusCode::Continue => 100,
             StatusCode::SwitchingProtocols => 101,
             StatusCode::OK => 200,

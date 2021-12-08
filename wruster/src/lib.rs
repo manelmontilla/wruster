@@ -14,16 +14,27 @@ pub mod handlers;
 pub mod http;
 pub mod router;
 mod thread_pool;
+mod timeout_stream;
 
 use http::*;
 use router::{Normalize, Router};
 
-const DEFAULT_IDLE_TIMEOUT: time::Duration = time::Duration::from_secs(10);
+pub const DEFAULT_IDLE_TIMEOUT: time::Duration = time::Duration::from_secs(10);
+pub const DEFAULT_READ_REQUEST_TIMEOUT: time::Duration = time::Duration::from_secs(60);
+pub const DEFAULT_WRITE_REQUEST_TIMEOUT: time::Duration = time::Duration::from_secs(60);
+
+#[derive(Clone)]
+pub struct Timeouts {
+    pub idle_timeout: time::Duration,
+    pub read_request_timeout: time::Duration,
+    pub write_request_timeout: time::Duration,
+}
 
 pub struct Server {
     stop: Arc<AtomicBool>,
     addr: Option<String>,
     handle: Option<JoinHandle<Result<(), Box<Error>>>>,
+    timeouts: Timeouts,
 }
 
 impl Server {
@@ -31,15 +42,32 @@ impl Server {
         let stop = Arc::new(AtomicBool::new(false));
         let handle = None;
         let addr = None;
-        Server { stop, addr, handle }
+        let timeouts = Timeouts {
+            idle_timeout: DEFAULT_IDLE_TIMEOUT,
+            read_request_timeout: DEFAULT_READ_REQUEST_TIMEOUT,
+            write_request_timeout: DEFAULT_WRITE_REQUEST_TIMEOUT,
+        };
+        Server {
+            stop,
+            addr,
+            handle,
+            timeouts,
+        }
     }
 
-    pub fn run(
-        &mut self,
-        addr: &str,
-        routes: Router,
-        idle_timeout: Option<time::Duration>,
-    ) -> ServerResult {
+    pub fn from_timeouts(timeouts: Timeouts) -> Self {
+        let stop = Arc::new(AtomicBool::new(false));
+        let handle = None;
+        let addr = None;
+        Server {
+            stop,
+            addr,
+            handle,
+            timeouts,
+        }
+    }
+
+    pub fn run(&mut self, addr: &str, routes: Router) -> ServerResult {
         let listener = match net::TcpListener::bind(addr) {
             Ok(listener) => listener,
             Err(err) => return Err(Box::new(err)),
@@ -48,6 +76,8 @@ impl Server {
         let routes = Arc::new(routes);
         let mut pool = thread_pool::Pool::new(5);
         let stop = Arc::clone(&self.stop);
+        let timeouts = self.timeouts.clone();
+
         let handle = thread::spawn(move || loop {
             let (stream, src_addr) = match listener.accept() {
                 Err(err) => return Err(Box::new(err)),
@@ -58,15 +88,15 @@ impl Server {
             }
             info!("accepting connection from {}", src_addr);
             let cconfig = Arc::clone(&routes);
-            let timeout = idle_timeout.unwrap_or(DEFAULT_IDLE_TIMEOUT);
-            if let Err(err) = stream.set_read_timeout(Some(timeout)) {
-                panic!("setting idle timeout for  connections {}", err.to_string());
+            if let Err(err) = stream.set_read_timeout(Some(timeouts.idle_timeout)) {
+                panic!("setting idle timeout for connections {}", err.to_string());
             }
             let action = move || {
                 handle_conversation(stream, cconfig, src_addr);
             };
             pool.run(Box::new(action));
         });
+
         self.handle = Some(handle);
         self.addr = Some(String::from(addr));
         Ok(())
@@ -110,7 +140,7 @@ fn handle_conversation(mut stream: net::TcpStream, routes: Arc<Router>, source_a
         }
         debug!("connection fluxed");
     }
-    if let Err(err) = stream.shutdown(net::Shutdown::Write) {
+    if let Err(err) = stream.shutdown(net::Shutdown::Both) {
         error!("error closing connection with: {}, {}", source_addr, err);
     }
     debug!("connection closed")
@@ -121,7 +151,7 @@ fn handle_connection(
     routes: Arc<Router>,
     source_addr: SocketAddr,
 ) -> bool {
-    let mut connection_open = false;
+    let connection_open: bool;
     let mut response = match Request::read_from(stream) {
         Ok(request) => {
             connection_open = is_connection_alive(&request);
@@ -130,8 +160,10 @@ fn handle_connection(
         Err(err) => match err {
             errors::ParseError::Unknow(err) => {
                 error!("error reading request, error info: {}", err);
+                connection_open = false;
                 Response::from_status(StatusCode::BadRequest)
             }
+            errors::ParseError::Timeout => return false,
             errors::ParseError::ConnectionClosed => return false,
         },
     };

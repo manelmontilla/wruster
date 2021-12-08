@@ -1,5 +1,6 @@
 use std::error::Error;
 use std::io::ErrorKind;
+use std::io::Read;
 use std::io::Write;
 use std::net::{Ipv4Addr, Shutdown, SocketAddrV4, TcpListener, TcpStream};
 use std::thread;
@@ -16,19 +17,21 @@ use wruster::*;
 
 #[test]
 fn server_honors_idle_timeout() {
-    let mut server = Server::new();
+    let mut server = Server::from_timeouts(Timeouts {
+        idle_timeout: time::Duration::from_secs(1),
+        read_request_timeout: DEFAULT_READ_REQUEST_TIMEOUT,
+        write_request_timeout: DEFAULT_WRITE_REQUEST_TIMEOUT,
+    });
     let routes = router::Router::new();
     let serve_dir: HttpHandler = Box::new(move |_| Response::from_status(StatusCode::OK));
     routes.add("/", http::HttpMethod::POST, serve_dir);
     let port = get_free_port();
     let addr = format!("127.0.0.1:{}", port.to_string());
-    server
-        .run(&addr, routes, Some(time::Duration::from_secs(1)))
-        .unwrap();
+    server.run(&addr, routes).unwrap();
 
     thread::sleep(time::Duration::from_secs(1));
     let mut client = TcpClient {
-        addr: String::from("127.0.0.1:8081"),
+        addr: addr.to_string(),
         stream: None,
     };
     let request = "POST / HTTP/1.1\r\n\
@@ -40,9 +43,10 @@ test";
     client.send(request.as_bytes()).unwrap();
     let stream = client.stream().unwrap();
     let _ = Response::read_from(stream).unwrap();
+
     // From here after 1 sec the connection with the client must be closed.
     thread::sleep(time::Duration::from_secs(2));
-    assert_eq!(client.is_closed(), false);
+    assert_eq!(client.is_closed(), true);
     server.shutdown().unwrap()
 }
 
@@ -69,7 +73,7 @@ fn server_handles_requests() {
     let port = get_free_port();
     let addr = format!("127.0.0.1:{}", port.to_string());
     routes.add("/", http::HttpMethod::POST, handler);
-    server.run(&addr, routes, None).unwrap();
+    server.run(&addr, routes).unwrap();
 
     thread::sleep(time::Duration::from_secs(1));
     let mut client = TcpClient {
@@ -107,9 +111,7 @@ test";
 fn server_shutdowns() {
     let mut server = Server::new();
     let routes = router::Router::new();
-    server
-        .run("127.0.0.1:8081", routes, Some(time::Duration::from_secs(1)))
-        .unwrap();
+    server.run("127.0.0.1:8081", routes).unwrap();
     thread::sleep(time::Duration::from_secs(2));
     server.shutdown().unwrap()
 }
@@ -147,10 +149,12 @@ impl TcpClient {
         Ok(())
     }
 
-    pub fn is_closed(&self) -> bool {
-        let stream = self.stream.as_ref().expect("call connect first");
-        stream.peer_addr().unwrap();
-        return false;
+    pub fn is_closed(&mut self) -> bool {
+        let stream = self.stream.as_mut().expect("call connect first");
+        let mut buf = [0; 1];
+        stream.set_nonblocking(true).unwrap();
+        let len = stream.peek(&mut buf).unwrap();
+        len == 0
     }
 
     pub fn close(&mut self) -> Result<(), Box<dyn Error>> {
@@ -162,7 +166,7 @@ impl TcpClient {
 
 impl Drop for TcpClient {
     fn drop(&mut self) {
-        self.close();
+        let _ = self.close();
     }
 }
 

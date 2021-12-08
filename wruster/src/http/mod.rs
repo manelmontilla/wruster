@@ -13,7 +13,7 @@ mod status;
 pub use self::status::StatusCode;
 
 use crate::errors::ParseError;
-use crate::errors::ParseError::{ConnectionClosed, Unknow};
+use crate::errors::ParseError::{ConnectionClosed, Timeout, Unknow};
 
 use headers::*;
 
@@ -76,7 +76,11 @@ impl HttpRequestLine {
 
         let mut method = Vec::new();
         if let Err(err) = from.read_until(b' ', &mut method) {
-            return Err(Unknow(err.to_string()));
+            let err = match err.kind() {
+                io::ErrorKind::WouldBlock => Err(Timeout),
+                _ => Err(Unknow(err.to_string())),
+            };
+            return err;
         };
         if method.is_empty() {
             return Err(ConnectionClosed);
@@ -309,7 +313,11 @@ impl StatusLine {
         // Status-Line = HTTP-Version SP Status-Code SP Reason-Phrase CRLF
         let mut http_version = Vec::new();
         if let Err(err) = from.read_until(b' ', &mut http_version) {
-            return Err(Unknow(err.to_string()));
+            let err = match err.kind() {
+                io::ErrorKind::WouldBlock => Err(Timeout),
+                _ => Err(Unknow(err.to_string())),
+            };
+            return err;
         };
 
         if http_version.is_empty() {

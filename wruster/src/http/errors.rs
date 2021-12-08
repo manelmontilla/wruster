@@ -6,6 +6,7 @@ use std::fmt::Debug;
 pub enum ParseError {
     Unknow(String),
     ConnectionClosed,
+    Timeout,
 }
 
 impl fmt::Display for ParseError {
@@ -13,6 +14,7 @@ impl fmt::Display for ParseError {
         match self {
             Self::Unknow(msg) => write!(f, "{}", msg),
             Self::ConnectionClosed => write!(f, "Connection Closed"),
+            Self::Timeout => write!(f, "operation timeout"),
         }
     }
 }
