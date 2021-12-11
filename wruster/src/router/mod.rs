@@ -126,7 +126,7 @@ impl Normalize for path::PathBuf {
 
 #[cfg(test)]
 mod tests {
-    use crate::http::{headers::HttpHeaders, Body};
+    use crate::http::{headers::Headers, Body};
     use std::{io::Cursor, path::PathBuf, str::FromStr};
 
     use super::*;
@@ -181,7 +181,7 @@ mod tests {
             method: HttpMethod::POST,
             uri: String::from("/"),
             version: String::from("HTTP/1.1"),
-            headers: HttpHeaders::new(),
+            headers: Headers::new(),
         };
         let resp = action(request);
         let mut resp_body = resp.body.unwrap();

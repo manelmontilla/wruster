@@ -8,7 +8,7 @@ fn http_header_parse_standard() {
     // Test parsing standard headers.
     let header_content = "header-name:header value\r\n";
     let mut stream = BufReader::new(header_content.as_bytes());
-    let header_content = HttpHeader::read_from(&mut stream).unwrap().unwrap();
+    let header_content = Header::read_from(&mut stream).unwrap().unwrap();
     assert_eq!(header_content.name.as_str(), "header-name");
     assert_eq!(header_content.value.as_str(), "header value");
 }
@@ -17,7 +17,7 @@ fn http_header_parse_standard() {
 fn http_header_parse_with_colon_values() {
     let header_content = "Host: localhost:1234\r\n";
     let mut stream = BufReader::new(header_content.as_bytes());
-    let header_content = HttpHeader::read_from(&mut stream).unwrap().unwrap();
+    let header_content = Header::read_from(&mut stream).unwrap().unwrap();
     assert_eq!(header_content.name.as_str(), "Host");
     assert_eq!(header_content.value.as_str(), "localhost:1234");
 }
@@ -28,14 +28,14 @@ fn http_header_invalid_tokens() {
     let header_content = "header\rname:headervalue\r\n";
     let mut stream = BufReader::new(header_content.as_bytes());
     assert_eq!(
-        HttpHeader::read_from(&mut stream).unwrap_err(),
+        Header::read_from(&mut stream).unwrap_err(),
         Unknow(String::from("invalid header name line"))
     );
 
     let header_content = "header\x0Bname:headervalue\r\n";
     let mut stream = BufReader::new(header_content.as_bytes());
     assert_eq!(
-        HttpHeader::read_from(&mut stream).unwrap_err(),
+        Header::read_from(&mut stream).unwrap_err(),
         Unknow(String::from("invalid header name line"))
     );
 }
@@ -45,7 +45,7 @@ fn http_header_no_colon() {
     let header_content = "header-name :headervalue\r\n";
     let mut stream = BufReader::new(header_content.as_bytes());
     assert_eq!(
-        HttpHeader::read_from(&mut stream).unwrap_err(),
+        Header::read_from(&mut stream).unwrap_err(),
         Unknow(String::from("invalid header name line"))
     );
 }
@@ -55,7 +55,7 @@ fn http_header_invalid_header_values() {
     let header_content = "header-name: \0x1Aheadervalue\r\n";
     let mut stream = BufReader::new(header_content.as_bytes());
     assert_eq!(
-        HttpHeader::read_from(&mut stream).unwrap_err(),
+        Header::read_from(&mut stream).unwrap_err(),
         Unknow(String::from("invalid header name value"))
     );
 }
@@ -64,7 +64,7 @@ fn http_header_invalid_header_values() {
 fn http_headers_parse() {
     let header_content = "header-one: value-one\r\n\r\n";
     let stream = &mut BufReader::new(header_content.as_bytes());
-    let result = HttpHeaders::read_from(stream).unwrap();
+    let result = Headers::read_from(stream).unwrap();
     let res_headers = Vec::from_iter(result.iter());
     assert_eq!(res_headers.len(), 1);
     assert_eq!(
@@ -78,7 +78,7 @@ fn http_headers_parse() {
     // Multiple values for the same header.
     let header_content = "header-one: value-one\r\nheader-one: value-two\r\n\r\n";
     let stream = &mut BufReader::new(header_content.as_bytes());
-    let result = HttpHeaders::read_from(stream).unwrap();
+    let result = Headers::read_from(stream).unwrap();
     let res_headers = Vec::from_iter(result.iter());
     assert_eq!(res_headers.len(), 1);
     assert_eq!(
@@ -131,8 +131,8 @@ fn http_response_write() {
         content_length: content.len() as u64,
     };
 
-    let mut headers = HttpHeaders::new();
-    headers.add_header(HttpHeader {
+    let mut headers = Headers::new();
+    headers.add_header(Header {
         name: String::from("Content-Length"),
         value: String::from("8"),
     });
@@ -152,7 +152,7 @@ fn http_response_write() {
 
 #[test]
 fn http_response_write_empty_body() {
-    let headers = HttpHeaders::new();
+    let headers = Headers::new();
     let mut response = Response {
         status: StatusCode::OK,
         headers: headers,
@@ -169,7 +169,7 @@ fn http_response_write_empty_body() {
 
 #[test]
 fn http_response_no_headers_no_body() {
-    let headers = HttpHeaders::new();
+    let headers = Headers::new();
     let mut response = Response {
         status: StatusCode::OK,
         headers: headers,
@@ -185,12 +185,12 @@ fn http_response_no_headers_no_body() {
 #[test]
 fn body_read_from_invalid_content_type() {
     let from = Cursor::new("test");
-    let mut headers = HttpHeaders::new();
-    headers.add_header(HttpHeader {
+    let mut headers = Headers::new();
+    headers.add_header(Header {
         name: "Content-Type".to_string(),
         value: "invalid".to_string(),
     });
-    headers.add_header(HttpHeader {
+    headers.add_header(Header {
         name: "Content-Length".to_string(),
         value: "4".to_string(),
     });

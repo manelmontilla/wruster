@@ -29,14 +29,6 @@ impl<'a, T> TimeoutStream<'a, T>
 where
     T: io::Read + io::Write + Timeout,
 {
-    pub fn reset_read(&mut self) {
-        self.ongoing_read = None;
-    }
-
-    pub fn reset_write(&mut self) {
-        self.ongoing_write = None;
-    }
-
     pub fn from(
         from: &mut T,
         read_timeout: Option<Duration>,
@@ -60,10 +52,7 @@ where
         // If not setup has set for read, we just pass through to the
         // underlaying reader.
         let timeout = match self.read {
-            None => {
-                println!("no read timeout set");
-                return self.stream.read(buf);
-            }
+            None => return self.stream.read(buf),
             Some(timeout) => timeout,
         };
         let read = match self.ongoing_read.as_mut() {
@@ -80,10 +69,8 @@ where
             return Err(io::Error::new(io::ErrorKind::WouldBlock, "time out"));
         }
         if let Err(err) = self.stream.set_read_timeout(Some(next_timeout)) {
-            println!("error setting read timeout");
             return io::Result::Err(err);
         }
-        println!("next read timeout set to {:?}", next_timeout);
         read.start();
         let res = self.stream.read(buf);
         read.stop();
@@ -99,10 +86,7 @@ where
         // If no timeout has set for write, we just pass through to the
         // underlaying writer.
         let timeout = match self.write {
-            None => {
-                println!("no read timeout set");
-                return self.stream.write(buf);
-            }
+            None => return self.stream.write(buf),
             Some(timeout) => timeout,
         };
         let write = match self.ongoing_write.as_mut() {
@@ -119,10 +103,8 @@ where
             return Err(io::Error::new(io::ErrorKind::WouldBlock, "time out"));
         }
         if let Err(err) = self.stream.set_write_timeout(Some(next_timeout)) {
-            println!("error setting write timeout");
             return io::Result::Err(err);
         }
-        println!("next write timeout set to {:?}", next_timeout);
         write.start();
         let res = self.stream.write(buf);
         write.stop();
@@ -151,20 +133,14 @@ impl Operation {
 
     fn next_timeout(&mut self) -> Duration {
         if self.elapsed_secs >= self.timeout.as_secs() {
-            println!("timeout fired");
             Duration::from_secs(0)
         } else {
             let remaining = self.timeout.as_secs() - self.elapsed_secs;
-            println!(
-                "timeout not fired, remaining secs {}",
-                remaining.to_string()
-            );
             Duration::from_secs(remaining)
         }
     }
 
     fn start(&mut self) {
-        println!("operation stated");
         self.started = Some(Instant::now());
     }
 
@@ -172,10 +148,6 @@ impl Operation {
         if let Some(started) = self.started {
             let elapsed = started.elapsed().as_secs();
             self.elapsed_secs += elapsed;
-            println!(
-                "operation stopped, elapsed_secs updated to {}",
-                self.elapsed_secs.to_string()
-            );
         } else {
             println!("operation not initialized stopped");
         }
@@ -201,7 +173,6 @@ mod tests {
         let handle = thread::spawn(move || {
             let (mut stream, _) = listener.accept().unwrap();
             let mut tstream = TimeoutStream::from(&mut stream, Some(read_timeout), None);
-            tstream.reset_read();
             let mut reader = BufReader::new(&mut tstream);
             let mut content = Vec::new();
             reader.read_until(b' ', &mut content).unwrap();
@@ -238,31 +209,11 @@ mod tests {
             })
         }
 
-        pub fn stream(&mut self) -> Result<TcpStream, Box<dyn Error>> {
-            let stream = match &self.stream {
-                None => {
-                    return Err(Box::new(std::io::Error::new(
-                        io::ErrorKind::Other,
-                        "client not connected",
-                    )))
-                }
-                Some(stream) => stream,
-            };
-            let stream = stream.try_clone()?;
-            Ok(stream)
-        }
-
         pub fn send(&mut self, data: &[u8]) -> Result<(), Box<dyn Error>> {
             let stream = self.stream.as_mut().unwrap();
             stream.write(data)?;
             stream.flush()?;
             Ok(())
-        }
-
-        pub fn is_closed(&self) -> bool {
-            let stream = self.stream.as_ref().expect("call connect first");
-            stream.peer_addr().unwrap();
-            return false;
         }
 
         pub fn close(&mut self) -> Result<(), Box<dyn Error>> {

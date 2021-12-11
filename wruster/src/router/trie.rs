@@ -153,11 +153,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn adds_node() {
+    fn trie_adds_node() {
         let mut root = Node::<&str>::new();
         let index = "/a/b/c".as_bytes();
         root.add_value(index, "a");
-        println!("value {:?}", root.get_value("/a".as_bytes()));
+        assert_eq!(Some(&"a"), root.get_value("/a/b/c".as_bytes()));
     }
 
     #[test]
@@ -201,7 +201,6 @@ mod tests {
         let key = "/".as_bytes();
         let value = String::from("action for route /");
         root.add_value(key, value);
-        println!("{:?}", root);
         let value = root.get_value_prefix("/example".as_bytes());
         assert_eq!(value.unwrap(), "action for route /");
     }

@@ -142,10 +142,10 @@ fn handle_conversation(
         timeouts.clone(),
     ) {
         if let Err(err) = stream.flush() {
-            error!("error flusing to: {}, {}", source_addr, err);
+            error!("error flushing to: {}, {}", source_addr, err);
             return;
         }
-        debug!("connection fluxed");
+        debug!("connection flushed");
     }
     if let Err(err) = stream.shutdown(net::Shutdown::Both) {
         error!("error closing connection with: {}, {}", source_addr, err);
@@ -162,10 +162,17 @@ fn handle_connection(
     let connection_open: bool;
     let read_timeout = Some(timeouts.read_request_timeout);
     let write_timeout = Some(timeouts.write_request_timeout);
-    // TODO: Handle error cloning the stream.
-    let resp_stream = &mut stream.try_clone().unwrap();
-    let timeout_stream = TimeoutStream::from(stream, read_timeout, write_timeout);
-    let mut response = match Request::read_from(timeout_stream) {
+
+    let mut resp_stream = match stream.try_clone() {
+        Ok(stream) => stream,
+        Err(err) => {
+            error!("error cloning stream: {}", err.to_string());
+            return false;
+        }
+    };
+
+    let mut timeout_stream = TimeoutStream::from(stream, read_timeout, write_timeout);
+    let mut response = match Request::read_from(&mut timeout_stream) {
         Ok(request) => {
             connection_open = is_connection_alive(&request);
             run_action(request, routes)
@@ -181,7 +188,7 @@ fn handle_connection(
         },
     };
 
-    let mut timeout_stream = TimeoutStream::from(resp_stream, read_timeout, write_timeout);
+    let mut timeout_stream = TimeoutStream::from(&mut resp_stream, read_timeout, write_timeout);
     if let Err(err) = response.write(&mut timeout_stream) {
         error!(
             "error writing response to: {}, error info: {}",

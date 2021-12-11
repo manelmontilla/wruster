@@ -2,7 +2,7 @@ use std::fs;
 use std::io::BufReader;
 use std::{io, path::PathBuf};
 
-use crate::http::headers::{HttpHeader, HttpHeaders};
+use crate::http::headers::{Header, Headers};
 use crate::http::{Body, Request, Response, StatusCode};
 use crate::router::HttpHandler;
 
@@ -38,13 +38,13 @@ pub fn serve_static(dir: &str, request: &Request) -> Response<'static> {
         }
     };
     let mime_type = mime_guess::from_path(path).first_or_octet_stream();
-    let mut headers = HttpHeaders::new();
+    let mut headers = Headers::new();
     let body = Box::new(BufReader::new(content));
-    headers.add_header(HttpHeader {
+    headers.add_header(Header {
         name: String::from("Content-Length"),
         value: metadata.len().to_string(),
     });
-    headers.add_header(HttpHeader {
+    headers.add_header(Header {
         name: String::from("Content-Type"),
         value: mime_type.to_string(),
     });

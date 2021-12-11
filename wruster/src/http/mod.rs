@@ -27,7 +27,7 @@ pub struct Request<'a> {
     pub method: HttpMethod,
     pub uri: String,
     pub version: String,
-    pub headers: HttpHeaders,
+    pub headers: Headers,
     pub body: Option<Body<'a>>,
 }
 
@@ -40,7 +40,7 @@ impl<'a> Request<'a> {
             Err(err) => return Err(err),
         };
         debug!("request line parsed: {:?}", request_line);
-        let headers = HttpHeaders::read_from(&mut reader)?;
+        let headers = Headers::read_from(&mut reader)?;
         debug!("headers parsed: {:?}", headers);
 
         let body = Body::read_from(reader, &headers)?;
@@ -142,7 +142,7 @@ impl<'a> Body<'a> {
 
     pub fn read_from<T: io::Read + 'a>(
         from: T,
-        headers: &HttpHeaders,
+        headers: &Headers,
     ) -> Result<Option<Body<'a>>, ParseError> {
         if let Some(encoding) = headers.get("Transfer-Enconding") {
             // Transfer-Enconding entity is not supported.
@@ -221,7 +221,7 @@ impl fmt::Debug for Body<'_> {
 #[derive(Debug)]
 pub struct Response<'a> {
     pub status: StatusCode,
-    pub headers: HttpHeaders,
+    pub headers: Headers,
     pub body: Option<Body<'a>>,
 }
 
@@ -232,7 +232,7 @@ impl<'a> Response<'a> {
             return Err(Box::new(err));
         };
         if self.body.is_none() {
-            self.headers.add_header(HttpHeader {
+            self.headers.add_header(Header {
                 name: String::from("Content-Length"),
                 value: String::from("0"),
             })
@@ -247,7 +247,7 @@ impl<'a> Response<'a> {
     }
 
     pub fn from_status(status: StatusCode) -> Response<'a> {
-        let headers = HttpHeaders::new();
+        let headers = Headers::new();
         Response {
             status,
             headers,
@@ -268,7 +268,7 @@ impl<'a> Response<'a> {
         let status_line = StatusLine::read_from(&mut reader)?;
         debug!("response status line parsed: {:?}", status_line);
 
-        let headers = HttpHeaders::read_from(&mut reader)?;
+        let headers = Headers::read_from(&mut reader)?;
         debug!("headers parsed: {:?}", headers);
 
         let body = Body::read_from(reader, &headers)?;
@@ -290,7 +290,7 @@ impl<'a> FromStr for Response<'a> {
         let content = Vec::from(content);
         let resp = Response {
             status: StatusCode::OK,
-            headers: HttpHeaders::new(),
+            headers: Headers::new(),
             body: Some(Body {
                 content_length: content.len() as u64,
                 content_type: Some(mime::TEXT_PLAIN),

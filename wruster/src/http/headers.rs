@@ -10,13 +10,13 @@ use super::HttpMessageChar;
 use super::ServerResult;
 
 #[derive(Debug)]
-pub struct HttpHeaders {
+pub struct Headers {
     headers: HashMap<String, Vec<String>>,
 }
 
-impl HttpHeaders {
-    pub fn new() -> HttpHeaders {
-        HttpHeaders {
+impl Headers {
+    pub fn new() -> Headers {
+        Headers {
             headers: HashMap::new(),
         }
     }
@@ -25,7 +25,7 @@ impl HttpHeaders {
         self.headers.iter()
     }
 
-    pub fn read_from<T: io::Read>(from: &mut io::BufReader<T>) -> Result<HttpHeaders, ParseError> {
+    pub fn read_from<T: io::Read>(from: &mut io::BufReader<T>) -> Result<Headers, ParseError> {
         let mut headers = Self::new();
         // https://www.w3.org/Protocols/rfc2616/rfc2616-sec4.html#sec4.5:
         // generic-message = start-line
@@ -34,7 +34,7 @@ impl HttpHeaders {
         //                   [ message-body ]
         debug!("parsing headers");
         loop {
-            let header = HttpHeader::read_from(from)?;
+            let header = Header::read_from(from)?;
             match header {
                 None => {
                     break;
@@ -48,7 +48,7 @@ impl HttpHeaders {
         Ok(headers)
     }
 
-    pub fn add_header(&mut self, header: HttpHeader) {
+    pub fn add_header(&mut self, header: Header) {
         let name = header.name;
         let content = header.value;
         let values = self.headers.entry(name).or_insert_with(Vec::new);
@@ -70,7 +70,7 @@ impl HttpHeaders {
             for content in h.1.iter() {
                 let content = content.clone();
                 let name = name.clone();
-                let header = HttpHeader {
+                let header = Header {
                     name,
                     value: content,
                 };
@@ -86,22 +86,22 @@ impl HttpHeaders {
     }
 }
 
-impl Default for HttpHeaders {
+impl Default for Headers {
     fn default() -> Self {
         Self::new()
     }
 }
 
 #[derive(Debug)]
-pub struct HttpHeader {
+pub struct Header {
     pub name: String,
     pub value: String,
 }
 
-impl HttpHeader {
+impl Header {
     pub fn read_from<T: io::Read>(
         from: &mut io::BufReader<T>,
-    ) -> Result<Option<HttpHeader>, ParseError> {
+    ) -> Result<Option<Header>, ParseError> {
         //generic-message = start-line
         //                  *(message-header CRLF)
         //                   CRLF
@@ -123,10 +123,10 @@ impl HttpHeader {
                 break;
             }
         }
-        HttpHeader::parse_header_line(line)
+        Header::parse_header_line(line)
     }
 
-    fn parse_header_line(line: Vec<u8>) -> Result<Option<HttpHeader>, ParseError> {
+    fn parse_header_line(line: Vec<u8>) -> Result<Option<Header>, ParseError> {
         // header-field   = field-name ":" OWS field-value OWS
         // field-name     = token
         // field-value    = *( field-content / obs-fold )
@@ -198,7 +198,7 @@ impl HttpHeader {
             field_value.push(c);
         }
 
-        let header = HttpHeader {
+        let header = Header {
             name,
             value: field_value,
         };
@@ -234,7 +234,7 @@ impl HttpHeader {
     }
 }
 
-impl fmt::Display for HttpHeader {
+impl fmt::Display for Header {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}:{}", self.name, self.value)
     }

@@ -6,8 +6,8 @@ use std::thread;
 use std::time::{self, Duration};
 
 use wruster::http;
-use wruster::http::headers::HttpHeader;
-use wruster::http::headers::HttpHeaders;
+use wruster::http::headers::Header;
+use wruster::http::headers::Headers;
 use wruster::http::Response;
 use wruster::http::StatusCode;
 use wruster::router;
@@ -91,8 +91,8 @@ test";
         .headers
         .iter()
         .collect::<Vec<(&String, &Vec<String>)>>();
-    let mut want_headers = HttpHeaders::new();
-    let header = HttpHeader {
+    let mut want_headers = Headers::new();
+    let header = Header {
         name: "Content-Length".to_string(),
         value: "0".to_string(),
     };
@@ -152,11 +152,11 @@ impl TcpClient {
         let mut buf = [0; 1];
         stream.set_nonblocking(true).unwrap();
         let err = match stream.peek(&mut buf) {
-             Err(err) => err,
-             Ok(n) => match n {
-                 0 => return true,
-                 _ => return false,
-             }
+            Err(err) => err,
+            Ok(n) => match n {
+                0 => return true,
+                _ => return false,
+            },
         };
         err.kind() == io::ErrorKind::WouldBlock
     }
