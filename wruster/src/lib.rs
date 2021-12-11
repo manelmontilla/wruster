@@ -19,13 +19,14 @@ mod timeout_stream;
 use http::*;
 use router::{Normalize, Router};
 
+use crate::timeout_stream::TimeoutStream;
+
 pub const DEFAULT_IDLE_TIMEOUT: time::Duration = time::Duration::from_secs(10);
 pub const DEFAULT_READ_REQUEST_TIMEOUT: time::Duration = time::Duration::from_secs(60);
 pub const DEFAULT_WRITE_REQUEST_TIMEOUT: time::Duration = time::Duration::from_secs(60);
 
 #[derive(Clone)]
 pub struct Timeouts {
-    pub idle_timeout: time::Duration,
     pub read_request_timeout: time::Duration,
     pub write_request_timeout: time::Duration,
 }
@@ -43,7 +44,6 @@ impl Server {
         let handle = None;
         let addr = None;
         let timeouts = Timeouts {
-            idle_timeout: DEFAULT_IDLE_TIMEOUT,
             read_request_timeout: DEFAULT_READ_REQUEST_TIMEOUT,
             write_request_timeout: DEFAULT_WRITE_REQUEST_TIMEOUT,
         };
@@ -77,7 +77,6 @@ impl Server {
         let mut pool = thread_pool::Pool::new(5);
         let stop = Arc::clone(&self.stop);
         let timeouts = self.timeouts.clone();
-
         let handle = thread::spawn(move || loop {
             let (stream, src_addr) = match listener.accept() {
                 Err(err) => return Err(Box::new(err)),
@@ -88,11 +87,9 @@ impl Server {
             }
             info!("accepting connection from {}", src_addr);
             let cconfig = Arc::clone(&routes);
-            if let Err(err) = stream.set_read_timeout(Some(timeouts.idle_timeout)) {
-                panic!("setting idle timeout for connections {}", err.to_string());
-            }
+            let timeouts = timeouts.clone();
             let action = move || {
-                handle_conversation(stream, cconfig, src_addr);
+                handle_conversation(stream, cconfig, timeouts, src_addr);
             };
             pool.run(Box::new(action));
         });
@@ -131,9 +128,19 @@ impl Default for Server {
     }
 }
 
-fn handle_conversation(mut stream: net::TcpStream, routes: Arc<Router>, source_addr: SocketAddr) {
+fn handle_conversation(
+    mut stream: net::TcpStream,
+    routes: Arc<Router>,
+    timeouts: Timeouts,
+    source_addr: SocketAddr,
+) {
     debug!("handling conversation with {}", source_addr);
-    while handle_connection(&stream, Arc::clone(&routes), source_addr) {
+    while handle_connection(
+        &mut stream,
+        Arc::clone(&routes),
+        source_addr,
+        timeouts.clone(),
+    ) {
         if let Err(err) = stream.flush() {
             error!("error flusing to: {}, {}", source_addr, err);
             return;
@@ -147,12 +154,18 @@ fn handle_conversation(mut stream: net::TcpStream, routes: Arc<Router>, source_a
 }
 
 fn handle_connection(
-    stream: &net::TcpStream,
+    stream: &mut TcpStream,
     routes: Arc<Router>,
     source_addr: SocketAddr,
+    timeouts: Timeouts,
 ) -> bool {
     let connection_open: bool;
-    let mut response = match Request::read_from(stream) {
+    let read_timeout = Some(timeouts.read_request_timeout);
+    let write_timeout = Some(timeouts.write_request_timeout);
+    // TODO: Handle error cloning the stream.
+    let resp_stream = &mut stream.try_clone().unwrap();
+    let timeout_stream = TimeoutStream::from(stream, read_timeout, write_timeout);
+    let mut response = match Request::read_from(timeout_stream) {
         Ok(request) => {
             connection_open = is_connection_alive(&request);
             run_action(request, routes)
@@ -167,9 +180,9 @@ fn handle_connection(
             errors::ParseError::ConnectionClosed => return false,
         },
     };
-    // TODO: Handle error cloning the stream.
-    let mut resp_stream = stream.try_clone().unwrap();
-    if let Err(err) = response.write(&mut resp_stream) {
+
+    let mut timeout_stream = TimeoutStream::from(resp_stream, read_timeout, write_timeout);
+    if let Err(err) = response.write(&mut timeout_stream) {
         error!(
             "error writing response to: {}, error info: {}",
             source_addr, err

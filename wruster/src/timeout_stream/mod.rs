@@ -2,7 +2,7 @@ use std::io;
 use std::net::TcpStream;
 use std::time::{Duration, Instant};
 
-trait Timeout {
+pub trait Timeout {
     fn set_read_timeout(&self, dur: Option<Duration>) -> io::Result<()>;
     fn set_write_timeout(&self, dur: Option<Duration>) -> io::Result<()>;
 }
@@ -17,24 +17,28 @@ impl Timeout for TcpStream {
     }
 }
 
-struct TimeoutStream<T: io::Read + io::Write + Timeout> {
-    stream: T,
+pub struct TimeoutStream<'a, T: io::Read + io::Write + Timeout> {
+    stream: &'a mut T,
     read: Option<Duration>,
     write: Option<Duration>,
     ongoing_read: Option<Operation>,
     ongoing_write: Option<Operation>,
 }
 
-impl<T> TimeoutStream<T>
+impl<'a, T> TimeoutStream<'a, T>
 where
     T: io::Read + io::Write + Timeout,
 {
-    fn reset_read(&mut self) {
+    pub fn reset_read(&mut self) {
         self.ongoing_read = None;
     }
 
-    fn from(
-        from: T,
+    pub fn reset_write(&mut self) {
+        self.ongoing_write = None;
+    }
+
+    pub fn from(
+        from: &mut T,
         read_timeout: Option<Duration>,
         write_timeout: Option<Duration>,
     ) -> TimeoutStream<T> {
@@ -48,7 +52,7 @@ where
     }
 }
 
-impl<T> io::Read for TimeoutStream<T>
+impl<'a, T> io::Read for TimeoutStream<'a, T>
 where
     T: io::Read + io::Write + Timeout,
 {
@@ -72,6 +76,9 @@ where
             Some(operation) => operation,
         };
         let next_timeout = read.next_timeout();
+        if next_timeout.as_secs() == 0 {
+            return Err(io::Error::new(io::ErrorKind::WouldBlock, "time out"));
+        }
         if let Err(err) = self.stream.set_read_timeout(Some(next_timeout)) {
             println!("error setting read timeout");
             return io::Result::Err(err);
@@ -84,7 +91,7 @@ where
     }
 }
 
-impl<T> io::Write for TimeoutStream<T>
+impl<'a, T> io::Write for TimeoutStream<'a, T>
 where
     T: io::Read + io::Write + Timeout,
 {
@@ -108,11 +115,14 @@ where
             Some(operation) => operation,
         };
         let next_timeout = write.next_timeout();
+        if next_timeout.as_secs() == 0 {
+            return Err(io::Error::new(io::ErrorKind::WouldBlock, "time out"));
+        }
         if let Err(err) = self.stream.set_write_timeout(Some(next_timeout)) {
-            println!("error setting read timeout");
+            println!("error setting write timeout");
             return io::Result::Err(err);
         }
-        println!("next read timeout set to {:?}", next_timeout);
+        println!("next write timeout set to {:?}", next_timeout);
         write.start();
         let res = self.stream.write(buf);
         write.stop();
@@ -133,7 +143,7 @@ struct Operation {
 impl Operation {
     fn from_timeout(timeout: Duration) -> Operation {
         Operation {
-            timeout: timeout,
+            timeout,
             started: None,
             elapsed_secs: 0,
         }
@@ -189,8 +199,8 @@ mod tests {
         let read_timeout = Duration::from_secs(3);
         let expected_timeout = read_timeout.clone();
         let handle = thread::spawn(move || {
-            let (stream, _) = listener.accept().unwrap();
-            let mut tstream = TimeoutStream::from(stream, Some(read_timeout), None);
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut tstream = TimeoutStream::from(&mut stream, Some(read_timeout), None);
             tstream.reset_read();
             let mut reader = BufReader::new(&mut tstream);
             let mut content = Vec::new();

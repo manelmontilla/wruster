@@ -1,12 +1,12 @@
 use std::env;
 use std::process;
+use std::time::Duration;
 
 use wruster::handlers::{log_middleware, serve_static};
 use wruster::http;
 use wruster::router;
-
 use wruster::router::HttpHandler;
-use wruster::*;
+use wruster::{Server, Timeouts};
 
 #[macro_use]
 extern crate log;
@@ -25,7 +25,12 @@ fn main() {
     let serve_dir: HttpHandler =
         log_middleware(Box::new(move |request| serve_static(&dir, &request)));
     routes.add("/", http::HttpMethod::GET, serve_dir);
-    let mut server = Server::new();
+    //let mut server = Server::new();
+    let timeouts = Timeouts {
+        write_request_timeout: Duration::from_secs(10),
+        read_request_timeout: Duration::from_secs(10),
+    };
+    let mut server = Server::from_timeouts(timeouts);
     if let Err(err) = server.run(addr, routes) {
         error!("error running wruster {}", err.to_string());
         process::exit(1);

@@ -1,10 +1,9 @@
 use std::error::Error;
-use std::io::ErrorKind;
-use std::io::Read;
-use std::io::Write;
+use std::io;
+use std::io::{Read, Write};
 use std::net::{Ipv4Addr, Shutdown, SocketAddrV4, TcpListener, TcpStream};
 use std::thread;
-use std::time;
+use std::time::{self, Duration};
 
 use wruster::http;
 use wruster::http::headers::HttpHeader;
@@ -16,10 +15,9 @@ use wruster::router::HttpHandler;
 use wruster::*;
 
 #[test]
-fn server_honors_idle_timeout() {
+fn server_closes_connection_when_timeout() {
     let mut server = Server::from_timeouts(Timeouts {
-        idle_timeout: time::Duration::from_secs(1),
-        read_request_timeout: DEFAULT_READ_REQUEST_TIMEOUT,
+        read_request_timeout: Duration::from_secs(1),
         write_request_timeout: DEFAULT_WRITE_REQUEST_TIMEOUT,
     });
     let routes = router::Router::new();
@@ -132,7 +130,7 @@ impl TcpClient {
         let stream = match &self.stream {
             None => {
                 return Err(Box::new(std::io::Error::new(
-                    ErrorKind::Other,
+                    io::ErrorKind::Other,
                     "client not connected",
                 )))
             }
@@ -153,8 +151,14 @@ impl TcpClient {
         let stream = self.stream.as_mut().expect("call connect first");
         let mut buf = [0; 1];
         stream.set_nonblocking(true).unwrap();
-        let len = stream.peek(&mut buf).unwrap();
-        len == 0
+        let err = match stream.peek(&mut buf) {
+             Err(err) => err,
+             Ok(n) => match n {
+                 0 => return true,
+                 _ => return false,
+             }
+        };
+        err.kind() == io::ErrorKind::WouldBlock
     }
 
     pub fn close(&mut self) -> Result<(), Box<dyn Error>> {
