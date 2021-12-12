@@ -102,6 +102,7 @@ impl HttpRequestLine {
         if uri.len() < 2 {
             return Err(Unknow(String::from("invalid request line")));
         };
+        
         let uri = String::from_utf8_lossy(&uri[..uri.len() - 1]);
 
         let mut version = Vec::new();
@@ -453,7 +454,7 @@ impl fmt::Display for HttpMethod {
     }
 }
 
-trait HttpMessageChar {
+trait MessageChar {
     fn is_valid_token_char(&self) -> bool;
 
     fn is_valid_field_content(&self) -> bool;
@@ -463,9 +464,8 @@ trait HttpMessageChar {
     fn is_optional_white_space(&self) -> bool;
 }
 
-impl HttpMessageChar for char {
+impl MessageChar for char {
     fn is_valid_token_char(&self) -> bool {
-        // We don't support non ascii chars in tokens.
         if !self.is_ascii() {
             return false;
         }

@@ -1,11 +1,9 @@
 use std::error::Error;
-use std::io;
-use std::io::{Read, Write};
+use std::io::{self, Read, Write};
 use std::net::{Ipv4Addr, Shutdown, SocketAddrV4, TcpListener, TcpStream};
 use std::thread;
 use std::time::{self, Duration};
 
-use wruster::http;
 use wruster::http::headers::Header;
 use wruster::http::headers::Headers;
 use wruster::http::Response;

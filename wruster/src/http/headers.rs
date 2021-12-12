@@ -6,7 +6,7 @@ use std::io::prelude::*;
 
 use super::errors::ParseError::Unknow;
 use super::errors::*;
-use super::HttpMessageChar;
+use super::MessageChar;
 use super::ServerResult;
 
 #[derive(Debug)]
@@ -132,6 +132,7 @@ impl Header {
         // field-value    = *( field-content / obs-fold )
         // field-content  = field-vchar [ 1*( SP / HTAB ) field-vchar ]
         // field-vchar    = VCHAR / obs-text
+        // token          = 1*<any CHAR except CTLs or separators>
         assert!(line.len() >= 2);
         if line.len() == 2 {
             return Ok(None);
@@ -197,7 +198,7 @@ impl Header {
             }
             field_value.push(c);
         }
-
+        name = normalize_header_name(name);
         let header = Header {
             name,
             value: field_value,
@@ -238,4 +239,21 @@ impl fmt::Display for Header {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}:{}", self.name, self.value)
     }
+}
+
+fn normalize_header_name(name: String) -> String {
+    let mut normalized = String::new();
+    let mut next_alfanum_upper = true;
+    for c in name.chars() {
+      if c.is_ascii_alphanumeric() && next_alfanum_upper{
+          normalized.push(c.to_ascii_uppercase() as char);
+          next_alfanum_upper = false;
+          continue;
+      };
+      if c == char::from(b' ') || c ==  char::from(b'-') {
+          next_alfanum_upper = true;
+      }
+      normalized.push(c);
+    };
+    normalized
 }

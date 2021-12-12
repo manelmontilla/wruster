@@ -1,16 +1,40 @@
 use std::io::BufReader;
 use std::iter::FromIterator;
-
 use super::*;
+
 
 #[test]
 fn http_header_parse_standard() {
     // Test parsing standard headers.
+    let header_content = "Header-Name:header value\r\n";
+    let mut stream = BufReader::new(header_content.as_bytes());
+    let header = Header::read_from(&mut stream).unwrap().unwrap();
+    assert_eq!(header.name.as_str(), "Header-Name");
+    assert_eq!(header.value.as_str(), "header value");
+}
+
+#[test]
+fn http_header_parse_normalize() {
+
+    let header_content = "header:header value\r\n";
+    let mut stream = BufReader::new(header_content.as_bytes());
+    let header = Header::read_from(&mut stream).unwrap().unwrap();
+    assert_eq!(header.name.as_str(), "Header");
+
     let header_content = "header-name:header value\r\n";
     let mut stream = BufReader::new(header_content.as_bytes());
-    let header_content = Header::read_from(&mut stream).unwrap().unwrap();
-    assert_eq!(header_content.name.as_str(), "header-name");
-    assert_eq!(header_content.value.as_str(), "header value");
+    let header = Header::read_from(&mut stream).unwrap().unwrap();
+    assert_eq!(header.name.as_str(), "Header-Name");
+
+    let header_content = "header-name-1:header value\r\n";
+    let mut stream = BufReader::new(header_content.as_bytes());
+    let header = Header::read_from(&mut stream).unwrap().unwrap();
+    assert_eq!(header.name.as_str(), "Header-Name-1");
+
+    let header_content = "header_part1-part2-part3: header value\r\n";
+    let mut stream = BufReader::new(header_content.as_bytes());
+    let header = Header::read_from(&mut stream).unwrap().unwrap();
+    assert_eq!(header.name.as_str(), "Header_part1-Part2-Part3");
 }
 
 #[test]
