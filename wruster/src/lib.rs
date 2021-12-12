@@ -17,6 +17,7 @@ mod thread_pool;
 mod timeout_stream;
 
 use http::*;
+use polling::{Event, Poller};
 use router::{Normalize, Router};
 
 use crate::timeout_stream::TimeoutStream;
@@ -35,6 +36,7 @@ pub struct Server {
     stop: Arc<AtomicBool>,
     addr: Option<String>,
     handle: Option<JoinHandle<Result<(), Box<Error>>>>,
+    poller: Option<Arc<Poller>>,
     timeouts: Timeouts,
 }
 
@@ -42,6 +44,7 @@ impl Server {
     pub fn new() -> Self {
         let stop = Arc::new(AtomicBool::new(false));
         let handle = None;
+        let poller = None;
         let addr = None;
         let timeouts = Timeouts {
             read_request_timeout: DEFAULT_READ_REQUEST_TIMEOUT,
@@ -51,6 +54,7 @@ impl Server {
             stop,
             addr,
             handle,
+            poller,
             timeouts,
         }
     }
@@ -58,11 +62,13 @@ impl Server {
     pub fn from_timeouts(timeouts: Timeouts) -> Self {
         let stop = Arc::new(AtomicBool::new(false));
         let handle = None;
+        let poller = None;
         let addr = None;
         Server {
             stop,
             addr,
             handle,
+            poller,
             timeouts,
         }
     }
@@ -72,26 +78,38 @@ impl Server {
             Ok(listener) => listener,
             Err(err) => return Err(Box::new(err)),
         };
+        listener.set_nonblocking(true).unwrap();
+        let poller = polling::Poller::new().unwrap();
+        poller.add(&listener, Event::readable(1)).unwrap();
+        let poller = Arc::new(poller);
+        let epoller = Arc::clone(&poller);
+        self.poller = Some(poller);
+        let mut events = Vec::new();
+
         info!("listening on {}", &addr);
         let routes = Arc::new(routes);
         let mut pool = thread_pool::Pool::new(5);
         let stop = Arc::clone(&self.stop);
         let timeouts = self.timeouts.clone();
         let handle = thread::spawn(move || loop {
-            let (stream, src_addr) = match listener.accept() {
-                Err(err) => return Err(Box::new(err)),
-                Ok(connection) => connection,
-            };
+            events.clear();
+            epoller.wait(&mut events, None)?;
+            for _ in &events {
+                let (stream, src_addr) = match listener.accept() {
+                    Err(err) => return Err(Box::new(err)),
+                    Ok(connection) => connection,
+                };
+                info!("accepting connection from {}", src_addr);
+                let cconfig = Arc::clone(&routes);
+                let timeouts = timeouts.clone();
+                let action = move || {
+                    handle_conversation(stream, cconfig, timeouts, src_addr);
+                };
+                pool.run(Box::new(action));
+            }
             if stop.as_ref().load(Ordering::SeqCst) {
                 return Ok(());
-            }
-            info!("accepting connection from {}", src_addr);
-            let cconfig = Arc::clone(&routes);
-            let timeouts = timeouts.clone();
-            let action = move || {
-                handle_conversation(stream, cconfig, timeouts, src_addr);
             };
-            pool.run(Box::new(action));
         });
 
         self.handle = Some(handle);
@@ -105,7 +123,7 @@ impl Server {
             return Err(err);
         }
         self.stop.as_ref().store(true, Ordering::SeqCst);
-        TcpStream::connect(self.addr.unwrap()).unwrap();
+        self.poller.unwrap().notify()?;
         let handle = self.handle.unwrap();
         handle.join().unwrap()?;
         Ok(())
