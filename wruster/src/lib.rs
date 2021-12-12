@@ -110,6 +110,7 @@ impl Server {
             if stop.as_ref().load(Ordering::SeqCst) {
                 return Ok(());
             };
+            epoller.modify(&listener, Event::readable(1)).unwrap();
         });
 
         self.handle = Some(handle);
