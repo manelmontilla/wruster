@@ -94,11 +94,16 @@ impl Server {
         let handle = thread::spawn(move || loop {
             events.clear();
             epoller.wait(&mut events, None)?;
-            for _ in &events {
+            for evt in  &events {
+                if evt.key != 1 {
+                    continue;
+                }
                 let (stream, src_addr) = match listener.accept() {
                     Err(err) => return Err(Box::new(err)),
                     Ok(connection) => connection,
                 };
+                stream.set_nonblocking(false).unwrap();
+                epoller.modify(&listener, Event::readable(1)).unwrap();
                 info!("accepting connection from {}", src_addr);
                 let cconfig = Arc::clone(&routes);
                 let timeouts = timeouts.clone();
@@ -110,7 +115,6 @@ impl Server {
             if stop.as_ref().load(Ordering::SeqCst) {
                 return Ok(());
             };
-            epoller.modify(&listener, Event::readable(1)).unwrap();
         });
 
         self.handle = Some(handle);

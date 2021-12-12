@@ -27,8 +27,8 @@ fn main() {
     routes.add("/", http::HttpMethod::GET, serve_dir);
     //let mut server = Server::new();
     let timeouts = Timeouts {
-        write_request_timeout: Duration::from_secs(10),
-        read_request_timeout: Duration::from_secs(10),
+        write_request_timeout: Duration::from_secs(60),
+        read_request_timeout: Duration::from_secs(60),
     };
     let mut server = Server::from_timeouts(timeouts);
     if let Err(err) = server.run(addr, routes) {
