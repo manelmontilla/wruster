@@ -245,15 +245,15 @@ fn normalize_header_name(name: String) -> String {
     let mut normalized = String::new();
     let mut next_alfanum_upper = true;
     for c in name.chars() {
-      if c.is_ascii_alphanumeric() && next_alfanum_upper{
-          normalized.push(c.to_ascii_uppercase() as char);
-          next_alfanum_upper = false;
-          continue;
-      };
-      if c == char::from(b' ') || c ==  char::from(b'-') {
-          next_alfanum_upper = true;
-      }
-      normalized.push(c);
-    };
+        if c.is_ascii_alphanumeric() && next_alfanum_upper {
+            normalized.push(c.to_ascii_uppercase() as char);
+            next_alfanum_upper = false;
+            continue;
+        };
+        if c == char::from(b' ') || c == char::from(b'-') {
+            next_alfanum_upper = true;
+        }
+        normalized.push(c);
+    }
     normalized
 }

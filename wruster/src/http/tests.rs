@@ -1,7 +1,6 @@
+use super::*;
 use std::io::BufReader;
 use std::iter::FromIterator;
-use super::*;
-
 
 #[test]
 fn http_header_parse_standard() {
@@ -15,7 +14,6 @@ fn http_header_parse_standard() {
 
 #[test]
 fn http_header_parse_normalize() {
-
     let header_content = "header:header value\r\n";
     let mut stream = BufReader::new(header_content.as_bytes());
     let header = Header::read_from(&mut stream).unwrap().unwrap();

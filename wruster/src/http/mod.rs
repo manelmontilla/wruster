@@ -102,7 +102,7 @@ impl HttpRequestLine {
         if uri.len() < 2 {
             return Err(Unknow(String::from("invalid request line")));
         };
-        
+
         let uri = String::from_utf8_lossy(&uri[..uri.len() - 1]);
 
         let mut version = Vec::new();
