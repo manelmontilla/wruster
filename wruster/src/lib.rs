@@ -20,6 +20,7 @@ use http::*;
 use polling::{Event, Poller};
 use router::{Normalize, Router};
 
+use crate::thread_pool::PoolError::{Busy, self};
 use crate::timeout_stream::TimeoutStream;
 
 pub const DEFAULT_IDLE_TIMEOUT: time::Duration = time::Duration::from_secs(10);
@@ -106,11 +107,24 @@ impl Server {
                 epoller.modify(&listener, Event::readable(1)).unwrap();
                 info!("accepting connection from {}", src_addr);
                 let cconfig = Arc::clone(&routes);
-                let timeouts = timeouts.clone();
-                let action = move || {
-                    handle_conversation(stream, cconfig, timeouts, src_addr);
+                let action_timeouts = timeouts.clone();
+                let src_addr_action = src_addr.clone();
+                let action_stream = match stream.try_clone() {
+                    Ok(stream) => stream,
+                    Err(err) => {
+                        error!("error cloning stream: {}", err.to_string());
+                        continue;
+                    }
                 };
-                pool.run(Box::new(action));
+                let action = move || {
+                    handle_conversation(action_stream, cconfig, action_timeouts.clone(), src_addr_action);
+                };
+
+                if let Err(_) = pool.run(Box::new(action)) {
+                    error!("server to busy handle connection with: {}", src_addr);
+                    handle_busy(stream, timeouts.clone(), src_addr);
+                }
+
             }
             if stop.as_ref().load(Ordering::SeqCst) {
                 return Ok(());
@@ -150,6 +164,27 @@ impl Default for Server {
         Self::new()
     }
 }
+
+
+fn handle_busy(
+    mut stream: net::TcpStream,
+    timeouts: Timeouts,
+    src_addr: SocketAddr,
+) {
+    debug!("sending too busy to {}", src_addr);
+    let write_timeout = Some(timeouts.write_request_timeout);
+    let read_timeout = Some(timeouts.read_request_timeout);
+    let mut timeout_stream = TimeoutStream::from(&mut stream, read_timeout, write_timeout);
+    let mut resp = Response::from_status(StatusCode::ServiceUnavailable);
+    if let Err(err) = resp.write(&mut timeout_stream) {
+        error!("sending too busy to {}: {}", src_addr, err.to_string())
+    }
+    if let Err(err) = stream.shutdown(net::Shutdown::Both) {
+        error!("error closing connection with: {}, {}", src_addr, err);
+    }
+    debug!("connection closed")
+}
+
 
 fn handle_conversation(
     mut stream: net::TcpStream,
