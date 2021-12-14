@@ -92,7 +92,7 @@ fn http_headers_parse() {
     assert_eq!(
         &res_headers[0],
         &(
-            &String::from("header-one"),
+            &String::from("Header-One"),
             &vec!(String::from("value-one"))
         )
     );
@@ -106,7 +106,7 @@ fn http_headers_parse() {
     assert_eq!(
         &res_headers[0],
         &(
-            &String::from("header-one"),
+            &String::from("Header-One"),
             &vec!(String::from("value-one"), String::from("value-two"))
         )
     );

@@ -94,7 +94,7 @@ impl Server {
         let handle = thread::spawn(move || loop {
             events.clear();
             epoller.wait(&mut events, None)?;
-            for evt in  &events {
+            for evt in &events {
                 if evt.key != 1 {
                     continue;
                 }
