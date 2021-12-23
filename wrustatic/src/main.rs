@@ -25,7 +25,6 @@ fn main() {
     let serve_dir: HttpHandler =
         log_middleware(Box::new(move |request| serve_static(&dir, &request)));
     routes.add("/", http::HttpMethod::GET, serve_dir);
-    //let mut server = Server::new();
     let timeouts = Timeouts {
         write_request_timeout: Duration::from_secs(60),
         read_request_timeout: Duration::from_secs(60),

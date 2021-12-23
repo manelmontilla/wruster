@@ -89,7 +89,7 @@ impl Server {
 
         info!("listening on {}", &addr);
         let routes = Arc::new(routes);
-        let mut pool = thread_pool::Pool::new(5);
+        let mut pool = thread_pool::Pool::new(1);
         let stop = Arc::clone(&self.stop);
         let timeouts = self.timeouts.clone();
         let handle = thread::spawn(move || loop {
@@ -121,7 +121,7 @@ impl Server {
                 };
 
                 if let Err(_) = pool.run(Box::new(action)) {
-                    error!("server to busy handle connection with: {}", src_addr);
+                    error!("server to busy to handle connection with: {}", src_addr);
                     handle_busy(stream, timeouts.clone(), src_addr);
                 }
 
@@ -182,7 +182,7 @@ fn handle_busy(
     if let Err(err) = stream.shutdown(net::Shutdown::Both) {
         error!("error closing connection with: {}, {}", src_addr, err);
     }
-    debug!("connection closed")
+    debug!("connection wuith closed")
 }
 
 

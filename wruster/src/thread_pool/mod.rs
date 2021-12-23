@@ -82,16 +82,6 @@ impl Pool {
         }
     }
 
-    /// Tries to run ther action given and if the fails because the server is
-    /// busy, then it executes the given busy_action in the calling thread.
-    pub fn run_or_busy(&mut self, action: Action, busy_action: Action) -> (){
-        let _ = match self.run(Box::new(action)) {
-            Err(err) => err,
-            Ok(()) => return (),
-        };
-        busy_action();
-    }
-
     pub fn run(&mut self, action: Action) -> Result<(), PoolError> {
         if !self.workers[self.next].is_busy() {
             self.workers[self.next].exec(action);
