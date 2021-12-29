@@ -20,7 +20,7 @@ use http::*;
 use polling::{Event, Poller};
 use router::{Normalize, Router};
 
-use crate::thread_pool::PoolError::{self, Busy};
+
 use crate::timeout_stream::TimeoutStream;
 
 pub const DEFAULT_IDLE_TIMEOUT: time::Duration = time::Duration::from_secs(10);

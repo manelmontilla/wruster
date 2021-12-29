@@ -1,12 +1,22 @@
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{sync_channel, SyncSender, TrySendError};
-use std::sync::{Arc, RwLock};
-use std::{rc, thread};
+use std::thread;
+use std::fmt::Debug;
 
 type Action = Box<dyn FnOnce() + Send>;
 
-#[derive(Debug)]
+
 pub enum PoolError {
-    Busy,
+    Busy(Action),
+}
+
+impl Debug for PoolError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Busy(_) => write!(f, "Debug")
+        }
+    }
 }
 
 struct Worker {
@@ -18,7 +28,10 @@ struct Worker {
 impl Worker {
     fn new(id: usize) -> Worker {
         let (sender, receiver) = sync_channel::<Action>(0);
+        let initialized = Arc::new(AtomicBool::new(false));
+        let t_initialized = Arc::clone(&initialized);
         let handle = std::thread::spawn(move || loop {
+            t_initialized.store(true, Ordering::SeqCst);
             let res = receiver.recv();
             if let Ok(action) = res {
                 action();
@@ -28,6 +41,10 @@ impl Worker {
             debug!("woker: {} stopped", id.to_string());
             break;
         });
+        // Wait for the thread to be initialized.
+        while !initialized.load(Ordering::SeqCst) {
+            thread::yield_now();
+        }
         Worker {
             id,
             handle: Some(handle),
@@ -87,15 +104,15 @@ impl Pool {
             Err(action) => action,
         };
         let mut from = (self.next + 1) % self.size;
-        while from != self.next {
+        loop {
             action = match self.workers[from].exec(action) {
                 Ok(_) => break,
                 Err(action) => action,
             };
             from = (from + 1) % self.size;
-        }
-        if from == self.next {
-            return Err(PoolError::Busy);
+            if from == self.next {
+               return Err(PoolError::Busy(action));
+            }
         }
         self.next = from;
         debug!(
@@ -129,17 +146,15 @@ mod tests {
         let mut pool = Pool::new(1);
         let (sender, receiver) = channel::<()>();
         let (worker_started_sender, worker_started_rcv) = channel::<()>();
-        let action = move || {
+        let action: Action = Box::new(move || {
             println!("runing long task");
             worker_started_sender.send(()).unwrap();
             receiver.recv().unwrap();
-        };
+        });
         let action2 = move || {
             unimplemented!();
         };
-
-        pool.run(Box::new(action)).unwrap();
-        // Ensure the worker already started.
+        pool.run(action).unwrap();
         worker_started_rcv.recv().unwrap();
         // Try to run another action.
         pool.run(Box::new(action2)).expect_err("expected error");
@@ -183,8 +198,7 @@ mod tests {
 
         pool.run(Box::new(action)).unwrap();
         pool.run(Box::new(action2)).unwrap();
-        // Droping the pool forces to be sure the action send to the pool is
-        // already done.
+        // Droping the pool forces ensdures the actions are executed.
         drop(pool);
         let result = &*result.lock().unwrap();
         assert_eq!(result, "first done");
