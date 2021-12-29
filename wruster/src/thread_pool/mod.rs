@@ -1,7 +1,6 @@
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc::{channel, Sender};
-use std::sync::Arc;
-use std::thread;
+use std::sync::mpsc::{sync_channel, SyncSender, TrySendError};
+use std::sync::{Arc, RwLock};
+use std::{rc, thread};
 
 type Action = Box<dyn FnOnce() + Send>;
 
@@ -13,45 +12,38 @@ pub enum PoolError {
 struct Worker {
     id: usize,
     handle: Option<thread::JoinHandle<()>>,
-    sender: Option<Sender<Action>>,
-    busy: Arc<AtomicBool>,
+    sender: Option<SyncSender<Action>>,
 }
 
 impl Worker {
     fn new(id: usize) -> Worker {
-        let busy = Arc::new(AtomicBool::new(false));
-        let (sender, receiver) = channel::<Action>();
-        let hbusy = Arc::clone(&busy);
+        let (sender, receiver) = sync_channel::<Action>(0);
         let handle = std::thread::spawn(move || loop {
             let res = receiver.recv();
-            hbusy.store(true, Ordering::SeqCst);
-            println!("woker: {} it's busy", id.to_string());
             if let Ok(action) = res {
                 action();
-                hbusy.store(false, Ordering::SeqCst);
-                println!("woker: {} free", id.to_string());
                 debug!("action executed");
                 continue;
             }
-            hbusy.store(false, Ordering::SeqCst);
-            println!("woker: {} stopped", id.to_string());
+            debug!("woker: {} stopped", id.to_string());
             break;
         });
         Worker {
             id,
             handle: Some(handle),
             sender: Some(sender),
-            busy,
         }
     }
 
-    fn exec(&self, action: Action) {
+    fn exec(&self, action: Action) -> Result<(), Action> {
         let sender = self.sender.as_ref().unwrap();
-        sender.send(action).unwrap();
-    }
-
-    fn is_busy(&self) -> bool {
-        self.busy.load(Ordering::SeqCst)
+        match sender.try_send(action) {
+            Ok(()) => Ok(()),
+            Err(err) => match err {
+                TrySendError::Full(action) => Err(action),
+                TrySendError::Disconnected(_) => unreachable!(),
+            },
+        }
     }
 }
 
@@ -63,79 +55,50 @@ impl Drop for Worker {
     }
 }
 
-
-struct OneShotWorker {
-    id: usize,
-    handle: Option<thread::JoinHandle<()>>,
-}
-
-impl OneShotWorker {
-    fn new(id: usize, action: Action) -> OneShotWorker {
-        let handle = std::thread::spawn(move || {
-            action();
-            debug!("action executed");
-            println!("woker: {} stopped", id.to_string());
-        });
-        OneShotWorker {
-            id,
-            handle: Some(handle),
-        }
-    }
-}
-
-impl Drop for OneShotWorker {
-    fn drop(&mut self) {
-        let handle = self.handle.take().unwrap();
-        handle.join().unwrap();
-    }
-}
-
 pub struct Pool {
-    min: usize,
-    max: usize,
     size: usize,
     next: usize,
     workers: Vec<Worker>,
-    
 }
 
 impl Pool {
-    pub fn new(max: usize, min: usize) -> Pool {
-        let mut workers = Vec::with_capacity(max);
-        for i in 0..min {
+    pub fn new(size: usize) -> Pool {
+        let mut workers = Vec::with_capacity(size);
+        for i in 0..size {
             workers.push(Worker::new(i));
         }
-        let size = min;
         Pool {
-            min,
-            max,
             size,
-            next:0,
+            next: 0,
             workers,
         }
     }
 
     pub fn run(&mut self, action: Action) -> Result<(), PoolError> {
-        if !self.workers[self.next].is_busy() {
-            self.workers[self.next].exec(action);
-            println!(
-                "run: current worker: {} not busy",
-                self.workers[self.next].id.to_string()
-            );
-            self.next = (self.next + 1) % self.size;
-            return Ok(());
-        }
+        let mut action = match self.workers[self.next].exec(action) {
+            Ok(_) => {
+                debug!(
+                    "run: current worker: {} not busy",
+                    self.workers[self.next].id.to_string()
+                );
+                self.next = (self.next + 1) % self.size;
+                return Ok(());
+            }
+            Err(action) => action,
+        };
         let mut from = (self.next + 1) % self.size;
-        while self.workers[from].is_busy() && from != self.next {
+        while from != self.next {
+            action = match self.workers[from].exec(action) {
+                Ok(_) => break,
+                Err(action) => action,
+            };
             from = (from + 1) % self.size;
         }
         if from == self.next {
-            println!("run: all wokers are busy");
             return Err(PoolError::Busy);
         }
         self.next = from;
-        self.workers[self.next].exec(action);
-        println!(
+        debug!(
             "run: found the worker: {}, that is not busy",
             self.workers[self.next].id.to_string()
         );
@@ -157,12 +120,13 @@ impl Drop for Pool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::mpsc::channel;
     use std::sync::Arc;
     use std::sync::Mutex;
 
     #[test]
     fn returns_busy_error() {
-        let mut pool = Pool::new(1,1);
+        let mut pool = Pool::new(1);
         let (sender, receiver) = channel::<()>();
         let (worker_started_sender, worker_started_rcv) = channel::<()>();
         let action = move || {
@@ -186,7 +150,7 @@ mod tests {
 
     #[test]
     fn runs_an_action() {
-        let mut pool = Pool::new(1, 1);
+        let mut pool = Pool::new(1);
         let result = Arc::new(Mutex::new(String::new()));
         let action_result = Arc::clone(&result);
         let action = move || {
@@ -199,11 +163,10 @@ mod tests {
         let result = &*result.lock().unwrap();
         assert_eq!(result, "done");
     }
-    
 
     #[test]
     fn runs_multiple_actions() {
-        let mut pool = Pool::new(2,2);
+        let mut pool = Pool::new(2);
         let result = Arc::new(Mutex::new(String::new()));
         let action_result = Arc::clone(&result);
         let action = move || {

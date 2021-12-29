@@ -20,7 +20,7 @@ use http::*;
 use polling::{Event, Poller};
 use router::{Normalize, Router};
 
-use crate::thread_pool::PoolError::{Busy, self};
+use crate::thread_pool::PoolError::{self, Busy};
 use crate::timeout_stream::TimeoutStream;
 
 pub const DEFAULT_IDLE_TIMEOUT: time::Duration = time::Duration::from_secs(10);
@@ -89,7 +89,7 @@ impl Server {
 
         info!("listening on {}", &addr);
         let routes = Arc::new(routes);
-        let mut pool = thread_pool::Pool::new(4,4);
+        let mut pool = thread_pool::Pool::new(4);
         let stop = Arc::clone(&self.stop);
         let timeouts = self.timeouts.clone();
         let handle = thread::spawn(move || loop {
@@ -117,14 +117,18 @@ impl Server {
                     }
                 };
                 let action = move || {
-                    handle_conversation(action_stream, cconfig, action_timeouts.clone(), src_addr_action);
+                    handle_conversation(
+                        action_stream,
+                        cconfig,
+                        action_timeouts.clone(),
+                        src_addr_action,
+                    );
                 };
 
                 if let Err(_) = pool.run(Box::new(action)) {
                     error!("server to busy to handle connection with: {}", src_addr);
                     handle_busy(stream, timeouts.clone(), src_addr);
                 }
-
             }
             if stop.as_ref().load(Ordering::SeqCst) {
                 return Ok(());
@@ -165,12 +169,7 @@ impl Default for Server {
     }
 }
 
-
-fn handle_busy(
-    mut stream: net::TcpStream,
-    timeouts: Timeouts,
-    src_addr: SocketAddr,
-) {
+fn handle_busy(mut stream: net::TcpStream, timeouts: Timeouts, src_addr: SocketAddr) {
     debug!("sending too busy to {}", src_addr);
     let write_timeout = Some(timeouts.write_request_timeout);
     let read_timeout = Some(timeouts.read_request_timeout);
@@ -184,7 +183,6 @@ fn handle_busy(
     }
     debug!("connection wuith closed")
 }
-
 
 fn handle_conversation(
     mut stream: net::TcpStream,
