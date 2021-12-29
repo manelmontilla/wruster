@@ -89,7 +89,7 @@ impl Server {
 
         info!("listening on {}", &addr);
         let routes = Arc::new(routes);
-        let mut pool = thread_pool::Pool::new(1);
+        let mut pool = thread_pool::Pool::new(4,4);
         let stop = Arc::clone(&self.stop);
         let timeouts = self.timeouts.clone();
         let handle = thread::spawn(move || loop {

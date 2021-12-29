@@ -63,21 +63,54 @@ impl Drop for Worker {
     }
 }
 
+
+struct OneShotWorker {
+    id: usize,
+    handle: Option<thread::JoinHandle<()>>,
+}
+
+impl OneShotWorker {
+    fn new(id: usize, action: Action) -> OneShotWorker {
+        let handle = std::thread::spawn(move || {
+            action();
+            debug!("action executed");
+            println!("woker: {} stopped", id.to_string());
+        });
+        OneShotWorker {
+            id,
+            handle: Some(handle),
+        }
+    }
+}
+
+impl Drop for OneShotWorker {
+    fn drop(&mut self) {
+        let handle = self.handle.take().unwrap();
+        handle.join().unwrap();
+    }
+}
+
 pub struct Pool {
+    min: usize,
+    max: usize,
     size: usize,
     next: usize,
     workers: Vec<Worker>,
+    
 }
 
 impl Pool {
-    pub fn new(n: usize) -> Pool {
-        let mut workers = Vec::with_capacity(n);
-        for i in 0..n {
+    pub fn new(max: usize, min: usize) -> Pool {
+        let mut workers = Vec::with_capacity(max);
+        for i in 0..min {
             workers.push(Worker::new(i));
         }
+        let size = min;
         Pool {
-            size: n,
-            next: 0,
+            min,
+            max,
+            size,
+            next:0,
             workers,
         }
     }
@@ -129,7 +162,7 @@ mod tests {
 
     #[test]
     fn returns_busy_error() {
-        let mut pool = Pool::new(1);
+        let mut pool = Pool::new(1,1);
         let (sender, receiver) = channel::<()>();
         let (worker_started_sender, worker_started_rcv) = channel::<()>();
         let action = move || {
@@ -153,7 +186,7 @@ mod tests {
 
     #[test]
     fn runs_an_action() {
-        let mut pool = Pool::new(1);
+        let mut pool = Pool::new(1, 1);
         let result = Arc::new(Mutex::new(String::new()));
         let action_result = Arc::clone(&result);
         let action = move || {
@@ -166,10 +199,11 @@ mod tests {
         let result = &*result.lock().unwrap();
         assert_eq!(result, "done");
     }
+    
 
     #[test]
     fn runs_multiple_actions() {
-        let mut pool = Pool::new(2);
+        let mut pool = Pool::new(2,2);
         let result = Arc::new(Mutex::new(String::new()));
         let action_result = Arc::clone(&result);
         let action = move || {
