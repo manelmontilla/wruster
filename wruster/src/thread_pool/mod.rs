@@ -2,10 +2,11 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{sync_channel, SyncSender, TrySendError};
 use std::thread;
-use std::fmt::Debug;
+use std::fmt::{Debug, Write};
 
-type Action = Box<dyn FnOnce() + Send>;
+mod dynamic;
 
+type Action = Box<dyn FnOnce() + Send + 'static>;
 
 pub enum PoolError {
     Busy(Action),
