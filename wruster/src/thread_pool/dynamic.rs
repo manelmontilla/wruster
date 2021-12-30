@@ -1,13 +1,12 @@
+use super::{Action, PoolError, Worker};
 use std::borrow::BorrowMut;
-use std::sync::{Arc, Mutex, mpsc};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc::{sync_channel, SyncSender, TrySendError, RecvTimeoutError};
+use std::sync::mpsc::{sync_channel, RecvTimeoutError, SyncSender, TrySendError};
+use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
 use std::time::Duration;
-use super::{PoolError, Action, Worker};
 
 type DynamicWorkedFinished = Box<dyn FnOnce() + Send>;
-
 
 struct DynamicWorker {
     id: usize,
@@ -25,14 +24,14 @@ impl DynamicWorker {
             let res = receiver.recv_timeout(timeout);
             match res {
                 Ok(action) => {
-                action();
-                debug!("action executed");
-                continue;
+                    action();
+                    debug!("action executed");
+                    continue;
                 }
                 Err(err) => match err {
                     RecvTimeoutError::Timeout => debug!("worked timeout"),
                     RecvTimeoutError::Disconnected => debug!("worked disconnected"),
-                }
+                },
             }
             finished();
             debug!("woker: {} stopped", id.to_string());
@@ -81,13 +80,10 @@ impl Dynamic {
         let mut workers: Vec<Arc<DynamicWorkerElem>> = Vec::with_capacity(max);
         for i in 0..max {
             let elem: Option<DynamicWorker> = None;
-            let elem  = Arc::new(Mutex::new(elem));
+            let elem = Arc::new(Mutex::new(elem));
             workers.push(elem)
-        };
-        Dynamic {
-            workers,
-            timeout
         }
+        Dynamic { workers, timeout }
     }
 
     pub fn add_worker(&mut self, pos: usize) {
@@ -102,6 +98,8 @@ impl Dynamic {
         let cell = &self.workers[pos].lock().unwrap();
         *cell.borrow_mut().insert(worker);
     }
+    
+    
 
     // pub fn run(&mut self, action: Action) -> Result<(), PoolError> {
     //     let mut action = match self.DynamicWorkers[self.next].exec(action) {

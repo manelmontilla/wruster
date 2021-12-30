@@ -1,8 +1,8 @@
-use std::sync::Arc;
+use std::fmt::{Debug, Write};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{sync_channel, SyncSender, TrySendError};
+use std::sync::Arc;
 use std::thread;
-use std::fmt::{Debug, Write};
 
 mod dynamic;
 
@@ -15,7 +15,7 @@ pub enum PoolError {
 impl Debug for PoolError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Busy(_) => write!(f, "Debug")
+            Self::Busy(_) => write!(f, "Debug"),
         }
     }
 }
@@ -112,7 +112,7 @@ impl Pool {
             };
             from = (from + 1) % self.size;
             if from == self.next {
-               return Err(PoolError::Busy(action));
+                return Err(PoolError::Busy(action));
             }
         }
         self.next = from;
