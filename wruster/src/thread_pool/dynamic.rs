@@ -26,23 +26,29 @@ impl DynamicWorker {
         let (sender, receiver) = sync_channel::<Action>(0);
         let initialized = Arc::new(AtomicBool::new(false));
         let t_initialized = Arc::clone(&initialized);
-        let handle = std::thread::spawn(move || loop {
-            t_initialized.store(true, Ordering::SeqCst);
-            let res = receiver.recv_timeout(timeout);
-            match res {
-                Ok(action) => {
-                    action();
-                    debug!("action executed");
-                    continue;
+        let handle = std::thread::spawn(move || {
+            // When the woker is crearted it will execute, at least, one action
+            // so we don't want to timeout waiting for it.
+            let mut current_timneout = Duration::MAX;
+            loop {
+                t_initialized.store(true, Ordering::SeqCst);
+                let res = receiver.recv_timeout(current_timneout);
+                match res {
+                    Ok(action) => {
+                        action();
+                        debug!("action executed");
+                        current_timneout = timeout;
+                        continue;
+                    }
+                    Err(err) => match err {
+                        RecvTimeoutError::Timeout => debug!("worked timeout"),
+                        RecvTimeoutError::Disconnected => debug!("worked disconnected"),
+                    },
                 }
-                Err(err) => match err {
-                    RecvTimeoutError::Timeout => debug!("worked timeout"),
-                    RecvTimeoutError::Disconnected => debug!("worked disconnected"),
-                },
+                finished();
+                debug!("woker: {} stopped", id.to_string());
+                break;
             }
-            finished();
-            debug!("woker: {} stopped", id.to_string());
-            break;
         });
         // Wait for the thread to be initialized.
         while !initialized.load(Ordering::SeqCst) {
@@ -66,15 +72,18 @@ impl DynamicWorker {
         }
     }
 
-    fn retry_exec(&self, action: Action) {
+    fn exec_first(&self, action: Action) -> Result<(), Action> {
         let sender = self.sender.as_ref().unwrap();
         let mut action = action;
         loop {
             action = match sender.try_send(action) {
-                Ok(()) => return,
+                Ok(_) => return Ok(()),
                 Err(err) => match err {
                     TrySendError::Full(action) => action,
-                    TrySendError::Disconnected(_) => unreachable!(),
+                    TrySendError::Disconnected(_) => {
+                        
+                        unreachable!("the worker thread should not be disconnected")
+                    }
                 },
             };
         }
@@ -139,8 +148,8 @@ impl Dynamic {
     pub fn run(&mut self, action: Action) -> Result<(), PoolError> {
         // Try to add a new thread and run the Action.
         if let Some(index) = self.try_add_worker() {
-            // We use retry_exec here, even though there is a low chance for
-            // the thread in the new Worker not to being yet ready.
+            // We use retry_exec here, even though the chance for the thread in
+            // the new Worker not to be ready is very low.
             let mut worker = self.workers[index].as_ref().borrow_mut();
             worker.as_mut().unwrap().retry_exec(action);
             return Ok(());
@@ -160,6 +169,11 @@ impl Dynamic {
             };
         }
         return Err(PoolError::Busy(action));
+    }
+
+    pub fn number_of_workers(&self) -> usize {
+        let free_cells = self.free_cells.read().unwrap().len();
+        self.max - free_cells
     }
 }
 
@@ -266,7 +280,35 @@ mod tests {
             *str_result = String::from("second done");
         };
         pool.run(Box::new(action2)).unwrap();
-        // Droping the worker ensure the second action is finished.
+        // Droping the worker ensures the second action is finished.
+        drop(pool);
+        let result2 = &*result2.lock().unwrap();
+        assert_eq!(result2, "second done");
+    }
+
+    #[test]
+    fn workers_are_dropped_after_timeout() {
+        let mut pool = Dynamic::new(1, Duration::from_secs(10));
+        let (sender, receiver) = channel::<()>();
+        let (started_sender, started_rcv) = channel::<()>();
+        let action: Action = Box::new(move || {
+            println!("runing long task");
+            started_sender.send(()).unwrap();
+            receiver.recv().unwrap();
+        });
+        pool.run(action).unwrap();
+        started_rcv.recv().unwrap();
+        // Sginal the first thread to finish.
+        sender.send(()).unwrap();
+        // Try run the second action.
+        let result2 = Arc::new(Mutex::new(String::new()));
+        let action_result2 = Arc::clone(&result2);
+        let action2 = move || {
+            let mut str_result = action_result2.lock().unwrap();
+            *str_result = String::from("second done");
+        };
+        pool.run(Box::new(action2)).unwrap();
+        // Droping the worker ensures the second action is finished.
         drop(pool);
         let result2 = &*result2.lock().unwrap();
         assert_eq!(result2, "second done");
