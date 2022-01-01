@@ -1,8 +1,6 @@
 use super::{Action, PoolError};
-use std::borrow::BorrowMut;
-use std::cell::RefCell;
+use atomic_refcell::AtomicRefCell;
 use std::collections::VecDeque;
-use std::os::unix::prelude::CommandExt;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{sync_channel, RecvTimeoutError, SyncSender, TrySendError};
 use std::sync::{Arc, RwLock};
@@ -10,10 +8,6 @@ use std::thread;
 use std::time::Duration;
 
 type DynamicWorkedFinished = Box<dyn FnOnce() + Send>;
-
-pub enum DynamicPoolError {
-    Busy(Action),
-}
 
 struct DynamicWorker {
     id: usize,
@@ -100,7 +94,7 @@ impl Drop for DynamicWorker {
 type DynamicWorkerElem = Option<DynamicWorker>;
 
 pub struct Dynamic {
-    workers: Vec<Arc<RefCell<DynamicWorkerElem>>>,
+    workers: Vec<Arc<AtomicRefCell<DynamicWorkerElem>>>,
     timeout: Duration,
     free_cells: Arc<RwLock<VecDeque<usize>>>,
     max: usize,
@@ -108,11 +102,11 @@ pub struct Dynamic {
 
 impl Dynamic {
     pub fn new(max: usize, timeout: Duration) -> Dynamic {
-        let mut workers: Vec<Arc<RefCell<DynamicWorkerElem>>> = Vec::with_capacity(max);
+        let mut workers: Vec<Arc<AtomicRefCell<DynamicWorkerElem>>> = Vec::with_capacity(max);
         let mut free_cells = VecDeque::new();
         for i in 0..max {
             let elem: Option<DynamicWorker> = None;
-            let elem = Arc::new(RefCell::new(elem));
+            let elem = Arc::new(AtomicRefCell::new(elem));
             workers.push(elem);
             free_cells.push_back(i);
         }
@@ -125,7 +119,7 @@ impl Dynamic {
         }
     }
 
-    pub fn try_add_worker(&mut self, action: Action) -> Result<usize, Action> {
+    fn try_add_worker(&mut self, action: Action) -> Result<usize, Action> {
         let mut free_cells = self.free_cells.write().unwrap();
         let index = match free_cells.pop_front() {
             Some(index) => index,
@@ -140,7 +134,7 @@ impl Dynamic {
             }
         };
         let worker = DynamicWorker::new(index, self.timeout, action, Box::new(finished));
-        self.workers[index] = Arc::new(RefCell::new(Some(worker)));
+        self.workers[index] = Arc::new(AtomicRefCell::new(Some(worker)));
         Ok(index)
     }
 

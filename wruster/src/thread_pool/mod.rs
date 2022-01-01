@@ -1,12 +1,13 @@
-use std::fmt::{Debug, Write};
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc::{sync_channel, SyncSender, TrySendError};
-use std::sync::Arc;
-use std::thread;
+use std::{fmt::Debug, time::Duration};
 
-mod dynamic;
+mod dynamic_pool;
+mod static_pool;
+
+use self::{dynamic_pool::Dynamic, static_pool::Static};
 
 type Action = Box<dyn FnOnce() + Send + 'static>;
+
+const DEFAULT_TIMEOUT: Duration = Duration::from_secs(10);
 
 pub enum PoolError {
     Busy(Action),
@@ -20,117 +21,38 @@ impl Debug for PoolError {
     }
 }
 
-struct Worker {
-    id: usize,
-    handle: Option<thread::JoinHandle<()>>,
-    sender: Option<SyncSender<Action>>,
-}
-
-impl Worker {
-    fn new(id: usize) -> Worker {
-        let (sender, receiver) = sync_channel::<Action>(0);
-        let initialized = Arc::new(AtomicBool::new(false));
-        let t_initialized = Arc::clone(&initialized);
-        let handle = std::thread::spawn(move || loop {
-            t_initialized.store(true, Ordering::SeqCst);
-            let res = receiver.recv();
-            if let Ok(action) = res {
-                action();
-                debug!("action executed");
-                continue;
-            }
-            debug!("woker: {} stopped", id.to_string());
-            break;
-        });
-        // Wait for the thread to be initialized.
-        while !initialized.load(Ordering::SeqCst) {
-            thread::yield_now();
-        }
-        Worker {
-            id,
-            handle: Some(handle),
-            sender: Some(sender),
-        }
-    }
-
-    fn exec(&self, action: Action) -> Result<(), Action> {
-        let sender = self.sender.as_ref().unwrap();
-        match sender.try_send(action) {
-            Ok(()) => Ok(()),
-            Err(err) => match err {
-                TrySendError::Full(action) => Err(action),
-                TrySendError::Disconnected(_) => unreachable!(),
-            },
-        }
-    }
-}
-
-impl Drop for Worker {
-    fn drop(&mut self) {
-        drop(self.sender.take());
-        let handle = self.handle.take().unwrap();
-        handle.join().unwrap();
-    }
-}
-
 pub struct Pool {
-    size: usize,
-    next: usize,
-    workers: Vec<Worker>,
+    dynamic: Option<Dynamic>,
+    stat: Option<Static>,
 }
 
 impl Pool {
-    pub fn new(size: usize) -> Pool {
-        let mut workers = Vec::with_capacity(size);
-        for i in 0..size {
-            workers.push(Worker::new(i));
+    pub fn new(min: usize, max: usize) -> Pool {
+        assert!(min > 0 || max > 0);
+        let mut stat = None;
+        if min > 0 {
+            stat = Some(Static::new(min));
         }
-        Pool {
-            size,
-            next: 0,
-            workers,
+        let mut dynamic: Option<Dynamic> = None;
+        if min < max {
+            dynamic = Some(Dynamic::new(max - min, DEFAULT_TIMEOUT));
         }
+        Pool { dynamic, stat }
     }
 
     pub fn run(&mut self, action: Action) -> Result<(), PoolError> {
-        let mut action = match self.workers[self.next].exec(action) {
-            Ok(_) => {
-                debug!(
-                    "run: current worker: {} not busy",
-                    self.workers[self.next].id.to_string()
-                );
-                self.next = (self.next + 1) % self.size;
-                return Ok(());
-            }
-            Err(action) => action,
-        };
-        let mut from = (self.next + 1) % self.size;
-        loop {
-            action = match self.workers[from].exec(action) {
-                Ok(_) => break,
-                Err(action) => action,
+        let mut action = action;
+        if let Some(stat) = self.stat.as_mut() {
+            action = match stat.run(action) {
+                Ok(_) => return Ok(()),
+                Err(err) => match err {
+                    PoolError::Busy(action) => action,
+                },
             };
-            from = (from + 1) % self.size;
-            if from == self.next {
-                return Err(PoolError::Busy(action));
-            }
-        }
-        self.next = from;
-        debug!(
-            "run: found the worker: {}, that is not busy",
-            self.workers[self.next].id.to_string()
-        );
-        self.next = (self.next + 1) % self.size;
-        Ok(())
-    }
-}
-
-impl Drop for Pool {
-    fn drop(&mut self) {
-        let workers = &self.workers;
-        for worker in &*workers {
-            #[allow(clippy::drop_ref)]
-            drop(worker);
+        };
+        match self.dynamic.as_mut() {
+            Some(dynamic) => dynamic.run(action),
+            None => Err(PoolError::Busy(action)),
         }
     }
 }
@@ -143,30 +65,56 @@ mod tests {
     use std::sync::Mutex;
 
     #[test]
+    fn accepts_max_less_than_min() {
+        let pool = Pool::new(1, 0);
+        assert!(pool.dynamic.is_none());
+        assert!(pool.stat.is_some());
+    }
+
+    #[test]
+    fn accepts_min_zero() {
+        let pool = Pool::new(0, 1);
+        assert!(pool.dynamic.is_some());
+        assert!(pool.stat.is_none());
+    }
+
+    #[test]
     fn returns_busy_error() {
-        let mut pool = Pool::new(1);
+        let mut pool = Pool::new(1, 2);
+
+        // Run and pause one action.
         let (sender, receiver) = channel::<()>();
         let (worker_started_sender, worker_started_rcv) = channel::<()>();
         let action: Action = Box::new(move || {
-            println!("runing long task");
             worker_started_sender.send(()).unwrap();
             receiver.recv().unwrap();
         });
-        let action2 = move || {
-            unimplemented!();
-        };
         pool.run(action).unwrap();
         worker_started_rcv.recv().unwrap();
-        // Try to run another action.
-        pool.run(Box::new(action2)).expect_err("expected error");
 
-        // Sginal the first thread to finish.
+        // Run and pause another action.
+        let (sender1, receiver1) = channel::<()>();
+        let (worker_started_sender1, worker_started_rcv1) = channel::<()>();
+        let action: Action = Box::new(move || {
+            worker_started_sender1.send(()).unwrap();
+            receiver1.recv().unwrap();
+        });
+        pool.run(action).unwrap();
+        worker_started_rcv1.recv().unwrap();
+
+        // Try to run another action.
+        let action3 = move || {
+            unimplemented!();
+        };
+        pool.run(Box::new(action3)).expect_err("expected error");
+        // Unblock the running actions.
         sender.send(()).unwrap();
+        sender1.send(()).unwrap();
     }
 
     #[test]
     fn runs_an_action() {
-        let mut pool = Pool::new(1);
+        let mut pool = Pool::new(1, 1);
         let result = Arc::new(Mutex::new(String::new()));
         let action_result = Arc::clone(&result);
         let action = move || {
@@ -182,7 +130,7 @@ mod tests {
 
     #[test]
     fn runs_multiple_actions() {
-        let mut pool = Pool::new(2);
+        let mut pool = Pool::new(1, 2);
         let result = Arc::new(Mutex::new(String::new()));
         let action_result = Arc::clone(&result);
         let action = move || {
@@ -199,7 +147,7 @@ mod tests {
 
         pool.run(Box::new(action)).unwrap();
         pool.run(Box::new(action2)).unwrap();
-        // Droping the pool forces ensdures the actions are executed.
+        // Drop to pool to ensure the actions are finished.
         drop(pool);
         let result = &*result.lock().unwrap();
         assert_eq!(result, "first done");
