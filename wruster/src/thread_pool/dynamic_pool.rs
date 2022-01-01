@@ -65,22 +65,6 @@ impl DynamicWorker {
             },
         }
     }
-
-    fn exec_first(&self, action: Action) -> Result<(), Action> {
-        let sender = self.sender.as_ref().unwrap();
-        let mut action = action;
-        loop {
-            action = match sender.try_send(action) {
-                Ok(_) => return Ok(()),
-                Err(err) => match err {
-                    TrySendError::Full(action) => action,
-                    TrySendError::Disconnected(_) => {
-                        unreachable!("the worker thread should not be disconnected")
-                    }
-                },
-            };
-        }
-    }
 }
 
 impl Drop for DynamicWorker {
@@ -258,8 +242,13 @@ mod tests {
         });
         pool.run(action).unwrap();
         started_rcv.recv().unwrap();
-        // Sginal the first thread to finish.
+
+        // Signal the first thread to finish.
         sender.send(()).unwrap();
+        // Give time for worker to finish the task and be ready
+        // TODO: This test could ne flaky, find a way to avoid it.
+        thread::yield_now();
+
         // Try run the second action.
         let result2 = Arc::new(Mutex::new(String::new()));
         let action_result2 = Arc::clone(&result2);
