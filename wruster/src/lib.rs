@@ -107,7 +107,6 @@ impl Server {
                 info!("accepting connection from {}", src_addr);
                 let cconfig = Arc::clone(&routes);
                 let action_timeouts = timeouts.clone();
-                let src_addr_action = src_addr.clone();
                 let action_stream = match stream.try_clone() {
                     Ok(stream) => stream,
                     Err(err) => {
@@ -116,15 +115,10 @@ impl Server {
                     }
                 };
                 let action = move || {
-                    handle_conversation(
-                        action_stream,
-                        cconfig,
-                        action_timeouts.clone(),
-                        src_addr_action,
-                    );
+                    handle_conversation(action_stream, cconfig, action_timeouts.clone(), src_addr);
                 };
 
-                if let Err(_) = pool.run(Box::new(action)) {
+                if pool.run(Box::new(action)).is_err() {
                     error!("server to busy to handle connection with: {}", src_addr);
                     handle_busy(stream, timeouts.clone(), src_addr);
                 }

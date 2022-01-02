@@ -39,8 +39,8 @@ impl DynamicWorker {
                         continue;
                     }
                     Err(err) => match err {
-                        RecvTimeoutError::Timeout => debug!("worked timeout"),
-                        RecvTimeoutError::Disconnected => debug!("worked disconnected"),
+                        RecvTimeoutError::Timeout => debug!("worked {} timeout", id),
+                        RecvTimeoutError::Disconnected => debug!("worked {} disconnected", id),
                     },
                 }
                 finished();
@@ -72,6 +72,7 @@ impl Drop for DynamicWorker {
         drop(self.sender.take());
         let handle = self.handle.take().unwrap();
         handle.join().unwrap();
+        debug!("worker {} dropped", self.id);
     }
 }
 
@@ -141,9 +142,10 @@ impl Dynamic {
                 None => action,
             };
         }
-        return Err(PoolError::Busy(action));
+        Err(PoolError::Busy(action))
     }
 
+    #[allow(dead_code)]
     pub fn number_of_workers(&self) -> usize {
         let free_cells = self.free_cells.read().unwrap().len();
         self.max - free_cells
