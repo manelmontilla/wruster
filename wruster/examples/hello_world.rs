@@ -1,0 +1,38 @@
+use env_logger::Builder;
+use std::process;
+use std::str::FromStr;
+use std::time::Duration;
+
+use log::LevelFilter;
+use wruster::handlers::log_middleware;
+use wruster::http;
+use wruster::http::Response;
+use wruster::router;
+use wruster::router::HttpHandler;
+use wruster::{Server, Timeouts};
+
+#[macro_use]
+extern crate log;
+
+fn main() {
+    Builder::new().filter_level(LevelFilter::Debug).init();
+    let routes = router::Router::new();
+    let handler: HttpHandler = log_middleware(Box::new(move |_| {
+        Response::from_str("hellow world").unwrap()
+    }));
+    routes.add("/", http::HttpMethod::GET, handler);
+    let timeouts = Timeouts {
+        write_request_timeout: Duration::from_secs(60),
+        read_request_timeout: Duration::from_secs(60),
+    };
+    let mut server = Server::from_timeouts(timeouts);
+    if let Err(err) = server.run("127.0.0.1:8082", routes) {
+        error!("error running wruster {}", err.to_string());
+        process::exit(1);
+    };
+    if let Err(err) = server.wait() {
+        error!("error running wruster {}", err.to_string());
+        process::exit(1);
+    };
+    process::exit(0);
+}

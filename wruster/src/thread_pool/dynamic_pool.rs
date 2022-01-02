@@ -7,7 +7,7 @@ use std::sync::{Arc, RwLock};
 use std::thread;
 use std::time::Duration;
 
-type DynamicWorkedFinished = Box<dyn FnOnce() + Send>;
+type DynamicWorkerFinished = Box<dyn FnOnce() + Send>;
 
 struct DynamicWorker {
     id: usize,
@@ -20,7 +20,7 @@ impl DynamicWorker {
         id: usize,
         timeout: Duration,
         first_action: Action,
-        finished: DynamicWorkedFinished,
+        finished: DynamicWorkerFinished,
     ) -> DynamicWorker {
         let (sender, receiver) = sync_channel::<Action>(0);
         let initialized = Arc::new(AtomicBool::new(false));
@@ -39,12 +39,12 @@ impl DynamicWorker {
                         continue;
                     }
                     Err(err) => match err {
-                        RecvTimeoutError::Timeout => debug!("worked {} timeout", id),
-                        RecvTimeoutError::Disconnected => debug!("worked {} disconnected", id),
+                        RecvTimeoutError::Timeout => debug!("worker {} timeout", id),
+                        RecvTimeoutError::Disconnected => debug!("worker {} disconnected", id),
                     },
                 }
                 finished();
-                debug!("woker: {} stopped", id.to_string());
+                debug!("worker {} stopped", id.to_string());
                 break;
             }
         });

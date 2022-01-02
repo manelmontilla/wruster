@@ -1,3 +1,11 @@
+#![warn(missing_docs)]
+
+//! Experimental simple web sever that allows to develop web application using
+//! plain Rust.
+//! Examples:
+//! - [Rest](examples/rest.rs)
+//! - [Static web server](wrustatic)
+
 use std::io::{Error, ErrorKind};
 use std::net::{SocketAddr, TcpStream};
 use std::path::PathBuf;
@@ -88,7 +96,7 @@ impl Server {
 
         info!("listening on {}", &addr);
         let routes = Arc::new(routes);
-        let mut pool = thread_pool::Pool::new(4, 0);
+        let mut pool = thread_pool::Pool::new(4, 20);
         let stop = Arc::clone(&self.stop);
         let timeouts = self.timeouts.clone();
         let handle = thread::spawn(move || loop {
