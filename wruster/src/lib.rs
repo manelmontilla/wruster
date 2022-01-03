@@ -54,7 +54,7 @@ extern crate log;
 pub mod handlers;
 pub mod http;
 
-/// Contains the router to be used with to run a  [`Server`]
+/// Contains the router to be used in a [`Server`]
 pub mod router;
 mod thread_pool;
 mod timeout_stream;
@@ -91,13 +91,15 @@ pub struct Server {
 }
 
 impl Server {
-    /// Returns a Server using the default [timeouts][`DEFAULT_READ_REQUEST_TIMEOUT`].
+    /// Returns a Server using the default
+    /// [read][`DEFAULT_READ_REQUEST_TIMEOUT`] and
+    /// [write][`DEFAULT_WRITE_RESPONSE_TIMEOUT`] timeouts.
+    ///
     /// # Examples:
     ///
     /// ```rust
     /// use wruster::Server;
     /// let server = Server::new();
-    /// # server.shutdown().unwrap()
     /// ```
     pub fn new() -> Self {
         let stop = Arc::new(AtomicBool::new(false));
@@ -117,6 +119,19 @@ impl Server {
         }
     }
 
+    /// Returns a server configured with the given [Timeouts].
+    ///
+    /// # Arguments
+    ///
+    /// * `timeouts` - A [Timeouts] struct
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use wruster::Server;
+    ///
+    /// assert_eq!(Server::from_timeouts(timeouts), );
+    /// ```
     pub fn from_timeouts(timeouts: Timeouts) -> Self {
         let stop = Arc::new(AtomicBool::new(false));
         let handle = None;
@@ -131,6 +146,34 @@ impl Server {
         }
     }
 
+    /// Starts a server listening in the specified address and using the given
+    /// [`Router`], it returns the control inmediately to caller.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use wruster::Server;
+    /// use wruster::http::{self, Request};
+    /// use wruster::http::Response;
+    /// use wruster::router;
+    /// use wruster::router::HttpHandler;
+    /// let routes = router::Router::new();
+    /// let handler: HttpHandler = Box::new(move |request: Request| {
+    ///     let mut body = request.body.unwrap();
+    ///     let mut name = String::new();
+    ///     body.content.read_to_string(&mut name).unwrap();
+    ///     let greetings = format!("hello {}!!", name);
+    ///     Response::from_str(&greetings).unwrap()
+    /// });
+    /// routes.add("/", http::HttpMethod::GET, handler);
+    /// let mut server = Server::new();
+    /// server.run("127.0.0.1:8082", routes).unwrap()
+    /// server.wait().unwrap()
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if the .
     pub fn run(&mut self, addr: &str, routes: Router) -> ServerResult {
         let listener = match net::TcpListener::bind(addr) {
             Ok(listener) => listener,
