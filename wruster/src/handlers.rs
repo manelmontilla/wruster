@@ -6,6 +6,7 @@ use crate::http::headers::{Header, Headers};
 use crate::http::{Body, Request, Response, StatusCode};
 use crate::router::HttpHandler;
 
+
 pub fn serve_static(dir: &str, request: &Request) -> Response<'static> {
     let base_path: PathBuf = PathBuf::from(dir).canonicalize().unwrap();
     let mut uri = request.uri.as_str();
@@ -63,7 +64,7 @@ pub fn log_middleware(handler: HttpHandler) -> HttpHandler {
     Box::new(move |request: Request| {
         info!("request {:?}", request);
         let response = handler(request);
-        info!("response: {:?}", response);
+        info!("response {:?}", response);
         response
     })
 }

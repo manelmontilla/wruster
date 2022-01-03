@@ -14,10 +14,11 @@ use wruster::*;
 
 #[test]
 fn server_closes_connection_when_timeout() {
-    let mut server = Server::from_timeouts(Timeouts {
+    let timeouts = Timeouts {
         read_request_timeout: Duration::from_secs(1),
-        write_request_timeout: DEFAULT_WRITE_REQUEST_TIMEOUT,
-    });
+        write_response_timeout: Duration::from_secs(1),
+    };
+    let mut server = Server::from_timeouts(timeouts);
     let routes = router::Router::new();
     let serve_dir: HttpHandler = Box::new(move |_| Response::from_status(StatusCode::OK));
     routes.add("/", http::HttpMethod::POST, serve_dir);
@@ -40,7 +41,7 @@ test";
     let stream = client.stream().unwrap();
     let _ = Response::read_from(stream).unwrap();
 
-    // From here after 1 sec the connection with the client must be closed.
+    // From here after 1 sec, the connection with the client must be closed.
     thread::sleep(time::Duration::from_secs(2));
     assert_eq!(client.is_closed(), true);
     server.shutdown().unwrap()
@@ -107,7 +108,9 @@ test";
 fn server_shutdowns() {
     let mut server = Server::new();
     let routes = router::Router::new();
-    server.run("127.0.0.1:8081", routes).unwrap();
+    let port = get_free_port();
+    let addr = format!("127.0.0.1:{}", port.to_string());
+    server.run(&addr, routes).unwrap();
     thread::sleep(time::Duration::from_secs(2));
     server.shutdown().unwrap()
 }

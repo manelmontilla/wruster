@@ -49,7 +49,7 @@ where
     T: io::Read + io::Write + Timeout,
 {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        // If not setup has set for read, we just pass through to the
+        // If no timeout is defined for reading, we just pass through to the
         // underlaying reader.
         let timeout = match self.read {
             None => return self.stream.read(buf),

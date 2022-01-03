@@ -15,17 +15,13 @@ use wruster::{Server, Timeouts};
 extern crate log;
 
 fn main() {
-    Builder::new().filter_level(LevelFilter::Debug).init();
+    Builder::new().filter_level(LevelFilter::Info).init();
     let routes = router::Router::new();
     let handler: HttpHandler = log_middleware(Box::new(move |_| {
         Response::from_str("hellow world").unwrap()
     }));
     routes.add("/", http::HttpMethod::GET, handler);
-    let timeouts = Timeouts {
-        write_request_timeout: Duration::from_secs(60),
-        read_request_timeout: Duration::from_secs(60),
-    };
-    let mut server = Server::from_timeouts(timeouts);
+    let mut server = Server::new();
     if let Err(err) = server.run("127.0.0.1:8082", routes) {
         error!("error running wruster {}", err.to_string());
         process::exit(1);

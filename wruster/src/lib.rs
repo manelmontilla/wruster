@@ -1,10 +1,43 @@
 #![warn(missing_docs)]
 
-//! Experimental simple web sever that allows to develop web application using
-//! plain Rust.
-//! Examples:
-//! - [Rest](examples/rest.rs)
-//! - [Static web server](wrustatic)
+//! Experimental simple web sever that allows to develop web applications
+//! without using [Async](https://rust-lang.github.io/async-book/).
+//! # Examples
+//! ```rust
+//! use env_logger::Builder;
+//! use std::process;
+//! use std::str::FromStr;
+//!use std::time::Duration;
+
+//!use log::LevelFilter;
+//!use wruster::handlers::log_middleware;
+//!use wruster::http;
+//!use wruster::http::Response;
+//!use wruster::router;
+//!use wruster::router::HttpHandler;
+//!use wruster::{Server, Timeouts};
+//!
+//!#[macro_use]
+//!extern crate log;
+//!
+//!fn main() {
+//!    Builder::new().filter_level(LevelFilter::Info).init();
+//!    let routes = router::Router::new();
+//!    let handler: HttpHandler = log_middleware(Box::new(move |_| {
+//!        Response::from_str("hellow world").unwrap()
+//!    }));
+//!    routes.add("/", http::HttpMethod::GET, handler);
+//!    let mut server = Server::new();
+//!    if let Err(err) = server.run("127.0.0.1:8082", routes) {
+ //!       error!("error running wruster {}", err.to_string());
+ //!       process::exit(1);
+ //!   };
+ //!   if let Err(err) = server.wait() {
+ //!       error!("error running wruster {}", err.to_string());
+ //!       process::exit(1);
+ //!   };
+ //!   process::exit(0);
+//!}
 
 use std::io::{Error, ErrorKind};
 use std::net::{SocketAddr, TcpStream};
@@ -20,6 +53,8 @@ extern crate log;
 
 pub mod handlers;
 pub mod http;
+
+/// Contains the router to be used with to run a  [`Server`]
 pub mod router;
 mod thread_pool;
 mod timeout_stream;
@@ -30,16 +65,23 @@ use router::{Normalize, Router};
 
 use crate::timeout_stream::TimeoutStream;
 
-pub const DEFAULT_IDLE_TIMEOUT: time::Duration = time::Duration::from_secs(10);
+/// Defines the default max time for a request to be read
 pub const DEFAULT_READ_REQUEST_TIMEOUT: time::Duration = time::Duration::from_secs(60);
-pub const DEFAULT_WRITE_REQUEST_TIMEOUT: time::Duration = time::Duration::from_secs(60);
 
+/// Defines the default max time for a response to be written
+pub const DEFAULT_WRITE_RESPONSE_TIMEOUT: time::Duration = time::Duration::from_secs(60);
+
+
+/// Defines the timeouts used in [`Server::from_timeouts`].
 #[derive(Clone)]
 pub struct Timeouts {
+    /// Maximun time for a request to be read
     pub read_request_timeout: time::Duration,
-    pub write_request_timeout: time::Duration,
+    /// Maximun time for a request to be written.
+    pub write_response_timeout: time::Duration,
 }
 
+/// Represents a web server that can be run passing a [router::Roter].
 pub struct Server {
     stop: Arc<AtomicBool>,
     addr: Option<String>,
@@ -49,6 +91,14 @@ pub struct Server {
 }
 
 impl Server {
+    /// Returns a Server using the default [timeouts][`DEFAULT_READ_REQUEST_TIMEOUT`].
+    /// # Examples:
+    ///
+    /// ```rust
+    /// use wruster::Server;
+    /// let server = Server::new();
+    /// # server.shutdown().unwrap()
+    /// ```
     pub fn new() -> Self {
         let stop = Arc::new(AtomicBool::new(false));
         let handle = None;
@@ -56,7 +106,7 @@ impl Server {
         let addr = None;
         let timeouts = Timeouts {
             read_request_timeout: DEFAULT_READ_REQUEST_TIMEOUT,
-            write_request_timeout: DEFAULT_WRITE_REQUEST_TIMEOUT,
+            write_response_timeout: DEFAULT_WRITE_RESPONSE_TIMEOUT,
         };
         Server {
             stop,
@@ -172,7 +222,7 @@ impl Default for Server {
 
 fn handle_busy(mut stream: net::TcpStream, timeouts: Timeouts, src_addr: SocketAddr) {
     debug!("sending too busy to {}", src_addr);
-    let write_timeout = Some(timeouts.write_request_timeout);
+    let write_timeout = Some(timeouts.write_response_timeout);
     let read_timeout = Some(timeouts.read_request_timeout);
     let mut timeout_stream = TimeoutStream::from(&mut stream, read_timeout, write_timeout);
     let mut resp = Response::from_status(StatusCode::ServiceUnavailable);
@@ -218,7 +268,7 @@ fn handle_connection(
 ) -> bool {
     let connection_open: bool;
     let read_timeout = Some(timeouts.read_request_timeout);
-    let write_timeout = Some(timeouts.write_request_timeout);
+    let write_timeout = Some(timeouts.write_response_timeout);
 
     let mut resp_stream = match stream.try_clone() {
         Ok(stream) => stream,
