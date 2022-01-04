@@ -21,7 +21,7 @@ impl Router {
     }
 
     pub fn add(&self, route: &str, method: HttpMethod, action: HttpHandler) {
-        // We priorize keeping the code of the Trie simpler over adding the
+        // We prioritize keeping the code of the Trie simpler over adding the
         // routes faster.
         let mut routes = self.routes.borrow_mut();
         let router_handlers = match routes.move_value_out(route.as_bytes()) {

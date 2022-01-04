@@ -13,7 +13,7 @@ mod status;
 pub use self::status::StatusCode;
 
 use crate::errors::ParseError;
-use crate::errors::ParseError::{ConnectionClosed, Timeout, Unknow};
+use crate::errors::ParseError::{ConnectionClosed, Timeout, Unknown};
 
 use headers::*;
 
@@ -78,7 +78,7 @@ impl HttpRequestLine {
         if let Err(err) = from.read_until(b' ', &mut method) {
             let err = match err.kind() {
                 io::ErrorKind::WouldBlock => Err(Timeout),
-                _ => Err(Unknow(err.to_string())),
+                _ => Err(Unknown(err.to_string())),
             };
             return err;
         };
@@ -87,34 +87,34 @@ impl HttpRequestLine {
         }
         if method.len() < 2 {
             let msg = format!("invalid request line {:?}", method);
-            return Err(Unknow(msg));
+            return Err(Unknown(msg));
         };
         let method = String::from_utf8_lossy(&method[..method.len() - 1]);
         let method = match HttpMethod::from_str(&method) {
-            Err(err) => return Err(Unknow(err)),
+            Err(err) => return Err(Unknown(err)),
             Ok(method) => method,
         };
 
         let mut uri = Vec::new();
         if let Err(err) = from.read_until(b' ', &mut uri) {
-            return Err(Unknow(err.to_string()));
+            return Err(Unknown(err.to_string()));
         };
         if uri.len() < 2 {
-            return Err(Unknow(String::from("invalid request line")));
+            return Err(Unknown(String::from("invalid request line")));
         };
 
         let uri = String::from_utf8_lossy(&uri[..uri.len() - 1]);
 
         let mut version = Vec::new();
         if let Err(err) = from.read_until(b'\n', &mut version) {
-            return Err(Unknow(err.to_string()));
+            return Err(Unknown(err.to_string()));
         };
         if version.len() < 3 {
-            return Err(Unknow(String::from("invalid request line")));
+            return Err(Unknown(String::from("invalid request line")));
         };
 
         if version[version.len() - 2] != (b'\r') {
-            return Err(Unknow(String::from("invalid request line")));
+            return Err(Unknown(String::from("invalid request line")));
         }
         let version = String::from_utf8_lossy(&version[..version.len() - 2]);
 
@@ -149,11 +149,11 @@ impl<'a> Body<'a> {
             // Transfer-Enconding entity is not supported.
             if encoding.len() != 1 {
                 let msg = "invalid Transfer-Enconding header".to_string();
-                return Err(Unknow(msg));
+                return Err(Unknown(msg));
             }
             if encoding[0] != "identity" {
                 let msg = format!("Transfer-Encoding: {} is not supported", encoding[0]);
-                return Err(Unknow(msg));
+                return Err(Unknown(msg));
             }
         };
 
@@ -162,7 +162,7 @@ impl<'a> Body<'a> {
             Some(lengths) => {
                 if lengths.len() != 1 {
                     let msg = String::from("invalid Content-Length header");
-                    return Err(Unknow(msg));
+                    return Err(Unknown(msg));
                 }
                 &lengths[0]
             }
@@ -171,7 +171,7 @@ impl<'a> Body<'a> {
         let len = match usize::from_str(len) {
             Err(err) => {
                 let msg = format!("invalid Content-Length header, {}", err.to_string());
-                return Err(Unknow(msg));
+                return Err(Unknown(msg));
             }
             Ok(size) => size,
         };
@@ -183,7 +183,7 @@ impl<'a> Body<'a> {
             Some(types) => {
                 if types.is_empty() {
                     let msg = format!("invalid Content-Type header, {:?}", types);
-                    return Err(Unknow(msg));
+                    return Err(Unknown(msg));
                 };
                 let mtype: mime::Mime = match types[0].parse() {
                     Ok(t) => t,
@@ -193,7 +193,7 @@ impl<'a> Body<'a> {
                             types,
                             err.to_string()
                         );
-                        return Err(Unknow(msg));
+                        return Err(Unknown(msg));
                     }
                 };
                 Some(mtype)
@@ -316,7 +316,7 @@ impl StatusLine {
         if let Err(err) = from.read_until(b' ', &mut http_version) {
             let err = match err.kind() {
                 io::ErrorKind::WouldBlock => Err(Timeout),
-                _ => Err(Unknow(err.to_string())),
+                _ => Err(Unknown(err.to_string())),
             };
             return err;
         };
@@ -330,24 +330,24 @@ impl StatusLine {
         Self::validate_version(&http_version)?;
         let mut status_code = Vec::new();
         if let Err(err) = from.read_until(b' ', &mut status_code) {
-            return Err(Unknow(err.to_string()));
+            return Err(Unknown(err.to_string()));
         };
         let mut status_code = String::from_utf8_lossy(&status_code).to_string();
         if status_code.len() != 4 {
-            return Err(Unknow(format!("invalid status code: {}", status_code)));
+            return Err(Unknown(format!("invalid status code: {}", status_code)));
         };
         status_code = status_code.trim_end().to_string();
         let status_code = match status_code.parse::<usize>() {
-            Err(error) => return Err(Unknow(error.to_string())),
+            Err(error) => return Err(Unknown(error.to_string())),
             Ok(code) => code,
         };
         let status_code = StatusCode::from(status_code);
         let mut reason_phrase = Vec::new();
         if let Err(err) = from.read_until(b'\n', &mut reason_phrase) {
-            return Err(Unknow(err.to_string()));
+            return Err(Unknown(err.to_string()));
         };
         if reason_phrase.len() < 3 {
-            return Err(Unknow(String::from("invalid reason phrase")));
+            return Err(Unknown(String::from("invalid reason phrase")));
         };
         let reason_phrase =
             String::from_utf8_lossy(&reason_phrase[..reason_phrase.len() - 2]).to_string();
@@ -363,26 +363,26 @@ impl StatusLine {
         // HTTP-Version   = "HTTP" "/" 1*DIGIT "." 1*DIGIT
         let parts: Vec<&str> = version.split('/').collect();
         if parts.len() != 2 {
-            return Err(Unknow(format!("invalid http version: {}", version)));
+            return Err(Unknown(format!("invalid http version: {}", version)));
         };
         if parts[0] != "HTTP" {
-            return Err(Unknow(format!("invalid http version: {}", version)));
+            return Err(Unknown(format!("invalid http version: {}", version)));
         };
 
         let digits_parts: Vec<&str> = parts[1].split('.').collect();
         if digits_parts.len() != 2 {
-            return Err(Unknow(format!("invalid http version: {}", version)));
+            return Err(Unknown(format!("invalid http version: {}", version)));
         }
 
         if let Err(error) = digits_parts[0].parse::<u8>() {
-            return Err(Unknow(format!(
+            return Err(Unknown(format!(
                 "invalid http version: {} {}",
                 version, error
             )));
         }
 
         if let Err(error) = digits_parts[1].parse::<u8>() {
-            return Err(Unknow(format!(
+            return Err(Unknown(format!(
                 "invalid http version: {} {}",
                 version, error
             )));

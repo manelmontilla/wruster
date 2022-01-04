@@ -5,8 +5,8 @@ use std::time::Duration;
 
 use log::LevelFilter;
 use wruster::handlers::log_middleware;
-use wruster::http::{self, Request};
 use wruster::http::Response;
+use wruster::http::{self, Request};
 use wruster::router;
 use wruster::router::HttpHandler;
 use wruster::Server;
@@ -31,27 +31,4 @@ fn main() {
         process::exit(1);
     };
     process::exit(0);
-}
-
-fn main2() {
-    // Builder::new().filter_level(LevelFilter::Info).init();
-    // let routes = router::Router::new();
-    // let handler: HttpHandler = Box::new(move |request: Request| {
-    //     let mut body = request.body.unwrap();
-    //     let mut name = String::new();
-    //     body.content.read_to_string(&mut name).unwrap();
-    //     let greetings = format!("hello {}!!", name);
-    //     Response::from_str(&greetings).unwrap()
-    // });
-    // routes.add("/", http::HttpMethod::GET, handler);
-    // let mut server = Server::new();
-    // if let Err(err) = server.run("127.0.0.1:8082", routes) {
-    //     error!("error running wruster {}", err.to_string());
-    //     process::exit(1);
-    // };
-    // if let Err(err) = server.wait() {
-    //     error!("error running wruster {}", err.to_string());
-    //     process::exit(1);
-    // };
-    // process::exit(0);
 }

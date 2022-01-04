@@ -6,7 +6,6 @@ use crate::http::headers::{Header, Headers};
 use crate::http::{Body, Request, Response, StatusCode};
 use crate::router::HttpHandler;
 
-
 pub fn serve_static(dir: &str, request: &Request) -> Response<'static> {
     let base_path: PathBuf = PathBuf::from(dir).canonicalize().unwrap();
     let mut uri = request.uri.as_str();

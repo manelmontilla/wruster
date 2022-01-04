@@ -29,14 +29,14 @@
 //!    routes.add("/", http::HttpMethod::GET, handler);
 //!    let mut server = Server::new();
 //!    if let Err(err) = server.run("127.0.0.1:8082", routes) {
- //!       error!("error running wruster {}", err.to_string());
- //!       process::exit(1);
- //!   };
- //!   if let Err(err) = server.wait() {
- //!       error!("error running wruster {}", err.to_string());
- //!       process::exit(1);
- //!   };
- //!   process::exit(0);
+//!       error!("error running wruster {}", err.to_string());
+//!       process::exit(1);
+//!   };
+//!   if let Err(err) = server.wait() {
+//!       error!("error running wruster {}", err.to_string());
+//!       process::exit(1);
+//!   };
+//!   process::exit(0);
 //!}
 
 use std::io::{Error, ErrorKind};
@@ -51,10 +51,12 @@ use std::{net, thread};
 #[macro_use]
 extern crate log;
 
+/// Contains a set of helpfull handlers.
 pub mod handlers;
+/// Contains the [`Request`] and [`Response`] parser.
 pub mod http;
 
-/// Contains the router to be used in a [`Server`]
+/// Contains the router to be used in a [`Server`].
 pub mod router;
 mod thread_pool;
 mod timeout_stream;
@@ -71,7 +73,6 @@ pub const DEFAULT_READ_REQUEST_TIMEOUT: time::Duration = time::Duration::from_se
 /// Defines the default max time for a response to be written
 pub const DEFAULT_WRITE_RESPONSE_TIMEOUT: time::Duration = time::Duration::from_secs(60);
 
-
 /// Defines the timeouts used in [`Server::from_timeouts`].
 #[derive(Clone)]
 pub struct Timeouts {
@@ -81,7 +82,7 @@ pub struct Timeouts {
     pub write_response_timeout: time::Duration,
 }
 
-/// Represents a web server that can be run passing a [router::Roter].
+/// Represents a web server that can be run passing a [`router::Router`].
 pub struct Server {
     stop: Arc<AtomicBool>,
     addr: Option<String>,
@@ -91,16 +92,18 @@ pub struct Server {
 }
 
 impl Server {
-    /// Returns a Server using the default
-    /// [read][`DEFAULT_READ_REQUEST_TIMEOUT`] and
-    /// [write][`DEFAULT_WRITE_RESPONSE_TIMEOUT`] timeouts.
-    ///
-    /// # Examples:
-    ///
-    /// ```rust
-    /// use wruster::Server;
-    /// let server = Server::new();
-    /// ```
+    /**
+    Returns a Server using the default
+    [read][`DEFAULT_READ_REQUEST_TIMEOUT`] and
+    [write][`DEFAULT_WRITE_RESPONSE_TIMEOUT`] timeouts.
+
+    # Examples:
+
+    ```rust
+    use wruster::Server;
+    let server = Server::new();
+    ```
+    */
     pub fn new() -> Self {
         let stop = Arc::new(AtomicBool::new(false));
         let handle = None;
@@ -119,19 +122,24 @@ impl Server {
         }
     }
 
-    /// Returns a server configured with the given [Timeouts].
-    ///
-    /// # Arguments
-    ///
-    /// * `timeouts` - A [Timeouts] struct
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use wruster::Server;
-    ///
-    /// assert_eq!(Server::from_timeouts(timeouts), );
-    /// ```
+    /**
+    Returns a server configured with the given [Timeouts].
+
+    # Arguments
+
+    * `timeouts` - A [Timeouts] struct
+
+    # Examples
+
+    ```
+    use wruster;
+    let timeouts = wruster::Timeouts {
+           read_request_timeout: wruster::DEFAULT_READ_REQUEST_TIMEOUT,
+           write_response_timeout: wruster::DEFAULT_WRITE_RESPONSE_TIMEOUT,
+    };
+    let server = wruster::Server::from_timeouts(timeouts);
+    ```
+    */
     pub fn from_timeouts(timeouts: Timeouts) -> Self {
         let stop = Arc::new(AtomicBool::new(false));
         let handle = None;
@@ -146,34 +154,46 @@ impl Server {
         }
     }
 
-    /// Starts a server listening in the specified address and using the given
-    /// [`Router`], it returns the control inmediately to caller.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use wruster::Server;
-    /// use wruster::http::{self, Request};
-    /// use wruster::http::Response;
-    /// use wruster::router;
-    /// use wruster::router::HttpHandler;
-    /// let routes = router::Router::new();
-    /// let handler: HttpHandler = Box::new(move |request: Request| {
-    ///     let mut body = request.body.unwrap();
-    ///     let mut name = String::new();
-    ///     body.content.read_to_string(&mut name).unwrap();
-    ///     let greetings = format!("hello {}!!", name);
-    ///     Response::from_str(&greetings).unwrap()
-    /// });
-    /// routes.add("/", http::HttpMethod::GET, handler);
-    /// let mut server = Server::new();
-    /// server.run("127.0.0.1:8082", routes).unwrap()
-    /// server.wait().unwrap()
-    /// ```
-    ///
-    /// # Errors
-    ///
-    /// This function will return an error if the .
+    /**
+    Starts a server listening in the specified address and using the given
+    [`Router`], it returns the control immediately to caller.
+
+    # Arguments
+
+    * `addr` a string slice specifying the address to listen on, format: "hostname:port"
+
+    * `routes` a [`Router`] with the routes the server must serve.
+
+    # Examples
+
+    ```no_run
+    use std::str::FromStr;
+
+    use wruster::Server;
+    use wruster::http::{self, Request};
+    use wruster::http::Response;
+    use wruster::router;
+    use wruster::router::HttpHandler;
+    let routes = router::Router::new();
+    let handler: HttpHandler = Box::new(move |request: Request| {
+        let mut body = request.body.unwrap();
+        let mut name = String::new();
+        body.content.read_to_string(&mut name).unwrap();
+        let greetings = format!("hello {}!!", name);
+        Response::from_str(&greetings).unwrap()
+    });
+    routes.add("/", http::HttpMethod::GET, handler);
+    let mut server = Server::new();
+    server.run("127.0.0.1:8082", routes).unwrap();
+    server.wait().unwrap();
+    ```
+
+    # Errors
+
+    This function will return an error if the address is wrong formatted or
+    the address is not free.
+
+    */
     pub fn run(&mut self, addr: &str, routes: Router) -> ServerResult {
         let listener = match net::TcpListener::bind(addr) {
             Ok(listener) => listener,
@@ -234,6 +254,39 @@ impl Server {
         Ok(())
     }
 
+    /**
+    Forces the server to gracefully shutdown by stop accepting new
+    connections. It waits until the ongoing requests are processed.
+
+    # Examples
+
+    ```no_run
+    use std::str::FromStr;
+
+    use wruster::Server;
+    use wruster::http::{self, Request};
+    use wruster::http::Response;
+    use wruster::router;
+    use wruster::router::HttpHandler;
+    let routes = router::Router::new();
+    let handler: HttpHandler = Box::new(move |request: Request| {
+        let mut body = request.body.unwrap();
+        let mut name = String::new();
+        body.content.read_to_string(&mut name).unwrap();
+        let greetings = format!("hello {}!!", name);
+        Response::from_str(&greetings).unwrap()
+    });
+    routes.add("/", http::HttpMethod::GET, handler);
+    let mut server = Server::new();
+    server.run("127.0.0.1:8082", routes).unwrap();
+    server.shutdown().unwrap();
+    ```
+
+    # Errors
+
+    This function will return an error the error [`ErrorKind::Other`] if the server
+    was not started.
+    */
     pub fn shutdown(self) -> ServerResult {
         if self.handle.is_none() {
             let err = Box::new(Error::new(ErrorKind::Other, "server not started"));
@@ -246,6 +299,39 @@ impl Server {
         Ok(())
     }
 
+    /**
+
+     Blocks the current thread until a call to [`Self::shutdown()`] is done.
+
+     # Examples
+
+    ```no_run
+     use std::str::FromStr;
+
+     use wruster::Server;
+     use wruster::http::{self, Request};
+     use wruster::http::Response;
+     use wruster::router;
+     use wruster::router::HttpHandler;
+     let routes = router::Router::new();
+     let handler: HttpHandler = Box::new(move |request: Request| {
+         let mut body = request.body.unwrap();
+         let mut name = String::new();
+         body.content.read_to_string(&mut name).unwrap();
+         let greetings = format!("hello {}!!", name);
+         Response::from_str(&greetings).unwrap()
+     });
+     routes.add("/", http::HttpMethod::GET, handler);
+     let mut server = Server::new();
+     server.run("127.0.0.1:8082", routes).unwrap();
+     server.wait().unwrap();
+     ```
+
+     # Errors
+
+     This function will return an error the error [`ErrorKind::Other`] if the server
+     was not started.
+     */
     pub fn wait(self) -> ServerResult {
         if self.handle.is_none() {
             let err = Box::new(Error::new(ErrorKind::Other, "server not started"));
@@ -275,7 +361,7 @@ fn handle_busy(mut stream: net::TcpStream, timeouts: Timeouts, src_addr: SocketA
     if let Err(err) = stream.shutdown(net::Shutdown::Both) {
         error!("error closing connection with: {}, {}", src_addr, err);
     }
-    debug!("connection wuith closed")
+    debug!("connection with closed")
 }
 
 fn handle_conversation(
@@ -328,7 +414,7 @@ fn handle_connection(
             run_action(request, routes)
         }
         Err(err) => match err {
-            errors::ParseError::Unknow(err) => {
+            errors::ParseError::Unknown(err) => {
                 error!("error reading request, error info: {}", err);
                 connection_open = false;
                 Response::from_status(StatusCode::BadRequest)
@@ -354,7 +440,7 @@ fn run_action(mut request: Request<'_>, routes: Arc<Router>) -> Response<'_> {
     let normalized = match req_path.normalize() {
         Ok(path) => path,
         Err(err) => {
-            let p = req_path.to_str().unwrap_or("unble to get path");
+            let p = req_path.to_str().unwrap_or("unable to get path");
             error!("error: parsing path {}, error info: {}", p, err);
             return Response::from_status(StatusCode::InternalServerError);
         }

@@ -4,7 +4,7 @@ use std::fmt::Debug;
 
 #[derive(Debug, PartialEq)]
 pub enum ParseError {
-    Unknow(String),
+    Unknown(String),
     ConnectionClosed,
     Timeout,
 }
@@ -12,7 +12,7 @@ pub enum ParseError {
 impl fmt::Display for ParseError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Unknow(msg) => write!(f, "{}", msg),
+            Self::Unknown(msg) => write!(f, "{}", msg),
             Self::ConnectionClosed => write!(f, "Connection Closed"),
             Self::Timeout => write!(f, "operation timeout"),
         }

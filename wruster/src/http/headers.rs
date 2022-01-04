@@ -4,7 +4,7 @@ use std::fmt::Debug;
 use std::io;
 use std::io::prelude::*;
 
-use super::errors::ParseError::Unknow;
+use super::errors::ParseError::Unknown;
 use super::errors::*;
 use super::MessageChar;
 use super::ServerResult;
@@ -111,7 +111,7 @@ impl Header {
         loop {
             let mut header_chunk = Vec::<u8>::new();
             if let Err(err) = from.read_until(b'\n', &mut header_chunk) {
-                return Err(Unknow(err.to_string()));
+                return Err(Unknown(err.to_string()));
             };
             line.append(&mut header_chunk);
             debug!("header chunk read: {}", String::from_utf8_lossy(&line));
@@ -157,7 +157,7 @@ impl Header {
                 "invalid header name line: {}, missing header name",
                 String::from_utf8_lossy(line)
             );
-            return Err(Unknow(String::from("invalid header name line")));
+            return Err(Unknown(String::from("invalid header name line")));
         };
         // After the token we MUST receive a colon.
         if line[i] != b':' {
@@ -165,7 +165,7 @@ impl Header {
                 "invalid header line: {}, missing semicolon",
                 String::from_utf8_lossy(line)
             );
-            return Err(Unknow(String::from("invalid header name line")));
+            return Err(Unknown(String::from("invalid header name line")));
         };
         // The header value must have at least one octed.
         let mut header_value_start = i + 1;
@@ -175,7 +175,7 @@ impl Header {
                 "invalid header value line: {}",
                 String::from_utf8_lossy(line)
             );
-            return Err(Unknow(String::from("invalid header name value")));
+            return Err(Unknown(String::from("invalid header name value")));
         };
         // We don't support folding so the field-value = field-content.
         let mut field_value = String::new();
@@ -194,7 +194,7 @@ impl Header {
                     c,
                     j
                 );
-                return Err(Unknow(String::from("invalid header name value")));
+                return Err(Unknown(String::from("invalid header name value")));
             }
             field_value.push(c);
         }
