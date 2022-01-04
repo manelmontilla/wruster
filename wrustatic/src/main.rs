@@ -42,8 +42,6 @@ extern crate log;
 //     process::exit(0);
 // }
 
-
-
 fn main() {
     env_logger::init();
     let addr = "localhost:8085";

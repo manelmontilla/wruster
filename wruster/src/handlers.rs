@@ -6,7 +6,6 @@ use crate::http::headers::{Header, Headers};
 use crate::http::{Body, Request, Response, StatusCode};
 use crate::router::HttpHandler;
 
-
 /**
 Implents a handler that serves the files in a directory tree.
 

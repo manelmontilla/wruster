@@ -1,12 +1,11 @@
 use env_logger::Builder;
 use std::process;
 use std::str::FromStr;
-use std::time::Duration;
 
 use log::LevelFilter;
 use wruster::handlers::log_middleware;
+use wruster::http;
 use wruster::http::Response;
-use wruster::http::{self, Request};
 use wruster::router;
 use wruster::router::HttpHandler;
 use wruster::Server;
