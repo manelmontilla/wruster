@@ -4,7 +4,7 @@ use std::fmt::Debug;
 
 #[derive(Debug, PartialEq)]
 /// Defines the possible errors generated when reading and parsing a Request or a Response.
-pub enum ParseError {
+pub enum HttpError {
     /// It's generated when any not controlled error is encountered when
     /// parsing a Request or a Response, more info about the error is stores
     /// in the inner String of the variant.
@@ -17,7 +17,7 @@ pub enum ParseError {
     Timeout,
 }
 
-impl fmt::Display for ParseError {
+impl fmt::Display for HttpError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Unknown(msg) => write!(f, "{}", msg),
@@ -27,4 +27,4 @@ impl fmt::Display for ParseError {
     }
 }
 
-impl Error for ParseError {}
+impl Error for HttpError {}

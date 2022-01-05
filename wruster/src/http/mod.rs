@@ -2,37 +2,55 @@ use std::io;
 use std::io::{prelude::*, Cursor};
 
 use std::convert::Infallible;
-use std::error::Error;
 use std::fmt;
 use std::fmt::Debug;
 use std::str::FromStr;
 
+/// Contains the definition of the errors used in the Http module.
 pub mod errors;
+/// Contains all the types needed to read and write Http headers.
 pub mod headers;
 mod status;
 pub use self::status::StatusCode;
 
-use crate::errors::ParseError;
-use crate::errors::ParseError::{ConnectionClosed, Timeout, Unknown};
+use crate::errors::HttpError;
+use crate::errors::HttpError::{ConnectionClosed, Timeout, Unknown};
 
 use headers::*;
 
 #[cfg(test)]
 mod tests;
 
-pub type ServerResult = Result<(), Box<dyn Error>>;
+/// Defines the returned by the methods and functions of this module.
+pub type HttpResult<T> = Result<T, HttpError>;
 
+/// Represents an Http Request.
 #[derive(Debug)]
 pub struct Request<'a> {
+    /// The [``HttpMethod``] of the request.
     pub method: HttpMethod,
+    /// The uri of the request.
     pub uri: String,
+    /// The version of the request.
     pub version: String,
+    /// The headers of the request.
     pub headers: Headers,
+    /// The body of the request, if any.
     pub body: Option<Body<'a>>,
 }
 
 impl<'a> Request<'a> {
-    pub fn read_from<T: io::Read + 'a>(from: T) -> Result<Request<'a>, ParseError> {
+
+    /**
+    Reads a request from an HTTP message in a type implementing [`io::Read`] according to
+    the spec: https://datatracker.ietf.org/doc/html/rfc7230.
+
+    # Errors
+
+    Returns a [``HttpError``] if there is any problem reading from ``from`` or the message
+    does not conform to the spec: https://datatracker.ietf.org/doc/html/rfc7230.
+    */
+    pub fn read_from<T: io::Read + 'a>(from: T) -> HttpResult<Request<'a>> {
         debug!("parsing request");
         let mut reader = io::BufReader::new(from);
         let request_line = match HttpRequestLine::read_from(&mut reader) {
@@ -57,7 +75,23 @@ impl<'a> Request<'a> {
         Ok(request)
     }
 
-    pub fn read_from_str(from: &str) -> Result<Request<'_>, ParseError> {
+    /**
+    Reads a request from a string.
+
+    # Examples
+
+    ```
+    use wruster::http::Request;
+
+    let str_req = "GET / HTTP/1.1\r\n\r\n";
+    let req = Request::read_from_str(str_req).unwrap();
+    ```
+
+    # Errors
+    Returns a [``HttpError``] if there is any problem reading from ``from`` or the message
+    does not conform to the spec: https://datatracker.ietf.org/doc/html/rfc7230.
+    */
+    pub fn read_from_str(from: &str) -> Result<Request<'_>, HttpError> {
         Request::read_from(Cursor::new(from))
     }
 }
@@ -70,7 +104,7 @@ struct HttpRequestLine {
 }
 
 impl HttpRequestLine {
-    fn read_from<T: io::Read>(from: &mut io::BufReader<T>) -> Result<HttpRequestLine, ParseError> {
+    fn read_from<T: io::Read>(from: &mut io::BufReader<T>) -> Result<HttpRequestLine, HttpError> {
         // Request-Line   = Method SP Request-URI SP HTTP-Version CRLF
         // https://www.w3.org/Protocols/rfc2616/rfc2616-sec5.html
 
@@ -133,18 +167,31 @@ pub struct Body<'a> {
 }
 
 impl<'a> Body<'a> {
-    pub fn write<T: io::Write>(&mut self, to: &mut T) -> ServerResult {
+    pub fn write<T: io::Write>(&mut self, to: &mut T) ->  HttpResult<()> {
         let src = &mut self.content;
         if let Err(err) = io::copy(src, to) {
-            return Err(Box::new(err));
+            return Err(HttpError::Unknown(err.to_string()));
         };
         Ok(())
     }
 
+    /// .
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use wruster::http::Body;
+    ///
+    /// assert_eq!(Body::read_from(from, headers), );
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if .
     pub fn read_from<T: io::Read + 'a>(
         from: T,
         headers: &Headers,
-    ) -> Result<Option<Body<'a>>, ParseError> {
+    ) -> Result<Option<Body<'a>>, HttpError> {
         if let Some(encoding) = headers.get("Transfer-Enconding") {
             // Transfer-Enconding entity is not supported.
             if encoding.len() != 1 {
@@ -227,10 +274,10 @@ pub struct Response<'a> {
 }
 
 impl<'a> Response<'a> {
-    pub fn write<T: io::Write>(&mut self, to: &mut T) -> ServerResult {
+    pub fn write<T: io::Write>(&mut self, to: &mut T) -> HttpResult<()> {
         let payload = format!("HTTP/1.1 {:#}\r\n", self.status);
         if let Err(err) = to.write(payload.as_bytes()) {
-            return Err(Box::new(err));
+           return Err(HttpError::Unknown(err.to_string()));
         };
         if self.body.is_none() {
             self.headers.add(Header {
@@ -256,7 +303,7 @@ impl<'a> Response<'a> {
         }
     }
 
-    pub fn read_from<T: io::Read + 'a>(from: T) -> Result<Response<'a>, ParseError> {
+    pub fn read_from<T: io::Read + 'a>(from: T) -> Result<Response<'a>, HttpError> {
         // https://www.w3.org/Protocols/rfc2616/rfc2616-sec6.html
         //    Status-Line
         //                    *(( general-header
@@ -310,7 +357,7 @@ struct StatusLine {
 }
 
 impl StatusLine {
-    fn read_from<T: io::Read>(from: &mut io::BufReader<T>) -> Result<StatusLine, ParseError> {
+    fn read_from<T: io::Read>(from: &mut io::BufReader<T>) -> Result<StatusLine, HttpError> {
         // Status-Line = HTTP-Version SP Status-Code SP Reason-Phrase CRLF
         let mut http_version = Vec::new();
         if let Err(err) = from.read_until(b' ', &mut http_version) {
@@ -358,7 +405,7 @@ impl StatusLine {
         })
     }
 
-    fn validate_version(version: &str) -> Result<(), ParseError> {
+    fn validate_version(version: &str) -> Result<(), HttpError> {
         // https://www.w3.org/Protocols/rfc2616/rfc2616-sec3.html
         // HTTP-Version   = "HTTP" "/" 1*DIGIT "." 1*DIGIT
         let parts: Vec<&str> = version.split('/').collect();

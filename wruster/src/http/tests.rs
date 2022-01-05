@@ -118,7 +118,6 @@ fn http_request_from_str() {
 Content-Length: 4\r\n\
 \r\n\
 test";
-
     let req = Request::read_from_str(str_req).unwrap();
     let mut body = req.body.unwrap();
     let mut payload = String::new();

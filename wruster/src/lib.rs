@@ -1,13 +1,15 @@
 #![warn(missing_docs)]
 
-//! Experimental simple web sever that allows to develop web applications
-//! without using [Async](https://rust-lang.github.io/async-book/).
-//! # Examples
-//! ```rust
-//! use env_logger::Builder;
-//! use std::process;
-//! use std::str::FromStr;
-//!use std::time::Duration;
+/*!
+Experimental simple web sever that allows to develop web applications
+without using [Async](https://rust-lang.github.io/async-book/).
+# Examples
+```rust
+use env_logger::Builder;
+use std::process;
+use std::str::FromStr;
+use std::time::Duration;
+*/
 
 //!use log::LevelFilter;
 //!use wruster::handlers::log_middleware;
@@ -47,13 +49,14 @@ use std::sync::Arc;
 use std::thread::JoinHandle;
 use std::{io::Write, time};
 use std::{net, thread};
+use std::error::Error as StdError;
 
 #[macro_use]
 extern crate log;
 
 /// Contains a set of helpfull handlers.
 pub mod handlers;
-/// Contains the [`Request`] and [`Response`] parser.
+/// Contains all the types necessary for dealing with Http messages.
 pub mod http;
 
 /// Contains the router to be used in a [`Server`].
@@ -72,6 +75,10 @@ pub const DEFAULT_READ_REQUEST_TIMEOUT: time::Duration = time::Duration::from_se
 
 /// Defines the default max time for a response to be written
 pub const DEFAULT_WRITE_RESPONSE_TIMEOUT: time::Duration = time::Duration::from_secs(60);
+
+
+/// Defines the result type returned from the [``Server``] methods.
+pub type ServerResult = Result<(), Box<dyn StdError>>;
 
 /// Defines the timeouts used in [`Server::from_timeouts`].
 #[derive(Clone)]
@@ -191,8 +198,7 @@ impl Server {
     # Errors
 
     This function will return an error if the address is wrong formatted or
-    the address is not free.
-
+    not free.
     */
     pub fn run(&mut self, addr: &str, routes: Router) -> ServerResult {
         let listener = match net::TcpListener::bind(addr) {
@@ -414,13 +420,13 @@ fn handle_connection(
             run_action(request, routes)
         }
         Err(err) => match err {
-            errors::ParseError::Unknown(err) => {
+            errors::HttpError::Unknown(err) => {
                 error!("error reading request, error info: {}", err);
                 connection_open = false;
                 Response::from_status(StatusCode::BadRequest)
             }
-            errors::ParseError::Timeout => return false,
-            errors::ParseError::ConnectionClosed => return false,
+            errors::HttpError::Timeout => return false,
+            errors::HttpError::ConnectionClosed => return false,
         },
     };
 

@@ -4,10 +4,10 @@ use std::fmt::Debug;
 use std::io;
 use std::io::prelude::*;
 
-use super::errors::ParseError::Unknown;
+use super::errors::HttpError::Unknown;
 use super::errors::*;
 use super::MessageChar;
-use super::ServerResult;
+use super::HttpResult;
 
 #[derive(Debug)]
 /// Holds a collection of HTTP headers.
@@ -63,13 +63,12 @@ impl Headers {
     Reads the headers from an HTTP message in a [`io::BufReader`] according to
     the spec: https://datatracker.ietf.org/doc/html/rfc7230.
 
-
     # Errors
 
-    Returns a [`ParseError`] if the header does not conform to the spec: https://datatracker.ietf.org/doc/html/rfc7230
+    Returns a [`HttpError`] if the header does not conform to the spec: https://datatracker.ietf.org/doc/html/rfc7230
     or there is any problem reading from the ``to``parameter.
     */
-    pub fn read_from<T: io::Read>(from: &mut io::BufReader<T>) -> Result<Headers, ParseError> {
+    pub fn read_from<T: io::Read>(from: &mut io::BufReader<T>) -> Result<Headers, HttpError> {
         let mut headers = Self::new();
         // generic-message = start-line
         //                   *(message-header CRLF)
@@ -164,7 +163,7 @@ impl Headers {
     This function will return an error if there is any problem
     writting ``to`` parameter.
     */
-    pub fn write<T: io::Write>(&self, to: &mut T) -> ServerResult {
+    pub fn write<T: io::Write>(&self, to: &mut T) -> HttpResult<()> {
         // generic-message = start-line
         //                   *(message-header CRLF)
         //                   CRLF
@@ -184,7 +183,7 @@ impl Headers {
 
         let written = to.write_all("\r\n".as_bytes());
         if let Err(err) = written {
-            return Err(Box::new(err));
+             return Err(HttpError::Unknown(err.to_string()));
         };
         Ok(())
     }
@@ -222,12 +221,12 @@ impl Header {
 
     # Errors
 
-    Returns a [`ParseError`] if the header does not conform to the spec:
+    Returns a [`HttpError`] if the header does not conform to the spec:
     https://datatracker.ietf.org/doc/html/rfc7230.
     */
     pub fn read_from<T: io::Read>(
         from: &mut io::BufReader<T>,
-    ) -> Result<Option<Header>, ParseError> {
+    ) -> Result<Option<Header>, HttpError> {
         //generic-message = start-line
         //                  *(message-header CRLF)
         //                   CRLF
@@ -252,7 +251,7 @@ impl Header {
         Header::parse_header_line(line)
     }
 
-    fn parse_header_line(line: Vec<u8>) -> Result<Option<Header>, ParseError> {
+    fn parse_header_line(line: Vec<u8>) -> Result<Option<Header>, HttpError> {
         // header-field   = field-name ":" OWS field-value OWS
         // field-name     = token
         // field-value    = *( field-content / obs-fold )
@@ -356,7 +355,7 @@ impl Header {
     This function will return an error if there is any error writing
     to the ``to`` paramerer.
     */
-    pub fn write<T: io::Write>(&self, to: &mut T) -> ServerResult {
+    pub fn write<T: io::Write>(&self, to: &mut T) -> HttpResult<()> {
         // generic-message = start-line
         //                   *(message-header CRLF)
         //                   CRLF
@@ -365,19 +364,19 @@ impl Header {
         // field-name     = token
         let mut written = to.write_all(&self.name.as_bytes());
         if let Err(err) = written {
-            return Err(Box::new(err));
+            return Err(HttpError::Unknown(err.to_string()));
         };
         written = to.write_all(": ".as_bytes());
         if let Err(err) = written {
-            return Err(Box::new(err));
+             return Err(HttpError::Unknown(err.to_string()));
         };
         written = to.write_all(self.value.as_bytes());
         if let Err(err) = written {
-            return Err(Box::new(err));
+             return Err(HttpError::Unknown(err.to_string()));
         };
         written = to.write_all("\r\n".as_bytes());
         if let Err(err) = written {
-            return Err(Box::new(err));
+             return Err(HttpError::Unknown(err.to_string()));
         };
         Ok(())
     }
