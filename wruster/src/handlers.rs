@@ -62,11 +62,11 @@ pub fn serve_static(dir: &str, request: &Request) -> Response<'static> {
     let mime_type = mime_guess::from_path(path).first_or_octet_stream();
     let mut headers = Headers::new();
     let body = Box::new(BufReader::new(content));
-    headers.add_header(Header {
+    headers.add(Header {
         name: String::from("Content-Length"),
         value: metadata.len().to_string(),
     });
-    headers.add_header(Header {
+    headers.add(Header {
         name: String::from("Content-Type"),
         value: mime_type.to_string(),
     });

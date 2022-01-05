@@ -154,7 +154,7 @@ fn http_response_write() {
     };
 
     let mut headers = Headers::new();
-    headers.add_header(Header {
+    headers.add(Header {
         name: String::from("Content-Length"),
         value: String::from("8"),
     });
@@ -208,11 +208,11 @@ fn http_response_no_headers_no_body() {
 fn body_read_from_invalid_content_type() {
     let from = Cursor::new("test");
     let mut headers = Headers::new();
-    headers.add_header(Header {
+    headers.add(Header {
         name: "Content-Type".to_string(),
         value: "invalid".to_string(),
     });
-    headers.add_header(Header {
+    headers.add(Header {
         name: "Content-Length".to_string(),
         value: "4".to_string(),
     });

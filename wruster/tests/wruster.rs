@@ -95,7 +95,7 @@ test";
         name: "Content-Length".to_string(),
         value: "0".to_string(),
     };
-    want_headers.add_header(header);
+    want_headers.add(header);
     let want_headers = want_headers
         .iter()
         .collect::<Vec<(&String, &Vec<String>)>>();

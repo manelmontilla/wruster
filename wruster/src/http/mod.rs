@@ -233,7 +233,7 @@ impl<'a> Response<'a> {
             return Err(Box::new(err));
         };
         if self.body.is_none() {
-            self.headers.add_header(Header {
+            self.headers.add(Header {
                 name: String::from("Content-Length"),
                 value: String::from("0"),
             })

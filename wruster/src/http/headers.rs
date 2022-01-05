@@ -10,24 +10,67 @@ use super::MessageChar;
 use super::ServerResult;
 
 #[derive(Debug)]
+/// Contains the headers of a Request or a Response.
 pub struct Headers {
     headers: HashMap<String, Vec<String>>,
 }
 
 impl Headers {
+
+    /**
+    Creates a new [`Headers`] struct.
+
+    # Examples
+
+    ```
+    use wruster::http::headers::Headers;
+
+    let headers = Headers::new();
+
+    ```
+    */
     pub fn new() -> Headers {
         Headers {
             headers: HashMap::new(),
         }
     }
 
+    /**
+    Returns an iterator over the current headers. Note that per each
+    header, there could be multiple values.
+
+    # Examples
+
+    ```
+    use wruster::http::headers::{Headers, Header};
+
+    let mut headers = Headers::new();
+    let header = Header{
+       name:String::from("name"),
+       value:String::from("value")
+    };
+    headers.add(header);
+    for header in headers.iter() {
+       print!("{:?}", header);
+    };
+    ```
+    */
     pub fn iter(&self) -> impl Iterator<Item = (&String, &Vec<String>)> {
         self.headers.iter()
     }
 
+    /**
+    Creates a Headers struct by parsing them from a [`io::BufReader`] according to
+    https://datatracker.ietf.org/doc/html/rfc7230.
+
+
+    # Errors
+
+    Returns a [`ParseError`] if the header does not conform to the standard.
+    */
     pub fn read_from<T: io::Read>(from: &mut io::BufReader<T>) -> Result<Headers, ParseError> {
         let mut headers = Self::new();
-        // https://www.w3.org/Protocols/rfc2616/rfc2616-sec4.html#sec4.5:
+        // https://datatracker.ietf.org/doc/html/rfc7230
         // generic-message = start-line
         //                   *(message-header CRLF)
         //                   CRLF
@@ -40,7 +83,7 @@ impl Headers {
                     break;
                 }
                 Some(header) => {
-                    headers.add_header(header);
+                    headers.add(header);
                 }
             };
         }
@@ -48,13 +91,49 @@ impl Headers {
         Ok(headers)
     }
 
-    pub fn add_header(&mut self, header: Header) {
+    /**
+    Adds a header to the the collection.
+
+    # Examples
+    ```
+    use wruster::http::headers::{Headers, Header};
+
+    let mut headers = Headers::new();
+    let header = Header{
+       name:String::from("name"),
+       value:String::from("value")
+    };
+    headers.add(header);
+    ```
+    */
+    pub fn add(&mut self, header: Header) {
         let name = header.name;
         let content = header.value;
         let values = self.headers.entry(name).or_insert_with(Vec::new);
         values.push(content);
     }
 
+    /// Returns the values of a header given its name.
+    ///
+    /// # Examples
+    /// ```
+    /// use wruster::http::headers::{Headers, Header};
+    ///
+    /// let mut headers = Headers::new();
+    /// let name = String::from("name");
+    /// let header = Header{
+    ///  name,
+    /// value:String::from("value")
+    /// };
+    /// headers.add(header);
+    /// let value = headers.get("name");
+    /// assert_eq!(
+    ///    value,
+    ///    Some(
+    ///        &vec!(String::from("value"))
+    ///     )
+    /// );
+    /// ```
     pub fn get(&self, name: &str) -> Option<&Vec<String>> {
         self.headers.get(name)
     }
@@ -99,6 +178,21 @@ pub struct Header {
 }
 
 impl Header {
+    /// .
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use wruster::http::headers::Header;
+    ///
+    /// let mut from = ;
+    /// assert_eq!(Header::read_from(&mut from), );
+    /// assert_eq!(from, );
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if .
     pub fn read_from<T: io::Read>(
         from: &mut io::BufReader<T>,
     ) -> Result<Option<Header>, ParseError> {
