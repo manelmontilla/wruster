@@ -205,7 +205,7 @@ fn http_response_no_headers_no_body() {
 }
 
 #[test]
-fn body_read_from_invalid_content_type() {
+fn http_body_read_from_invalid_content_type() {
     let from = Cursor::new("test");
     let mut headers = Headers::new();
     headers.add(Header {

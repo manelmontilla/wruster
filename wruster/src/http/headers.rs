@@ -10,7 +10,7 @@ use super::MessageChar;
 use super::ServerResult;
 
 #[derive(Debug)]
-/// Contains the headers of a Request or a Response.
+/// Holds a collection of HTTP headers.
 pub struct Headers {
     headers: HashMap<String, Vec<String>>,
 }
@@ -60,17 +60,17 @@ impl Headers {
     }
 
     /**
-    Creates a Headers struct by parsing them from a [`io::BufReader`] according to
-    https://datatracker.ietf.org/doc/html/rfc7230.
+    Reads the headers from an HTTP message in a [`io::BufReader`] according to
+    the spec: https://datatracker.ietf.org/doc/html/rfc7230.
 
 
     # Errors
 
-    Returns a [`ParseError`] if the header does not conform to the standard.
+    Returns a [`ParseError`] if the header does not conform to the spec: https://datatracker.ietf.org/doc/html/rfc7230
+    or there is any problem reading from the ``to``parameter.
     */
     pub fn read_from<T: io::Read>(from: &mut io::BufReader<T>) -> Result<Headers, ParseError> {
         let mut headers = Self::new();
-        // https://datatracker.ietf.org/doc/html/rfc7230
         // generic-message = start-line
         //                   *(message-header CRLF)
         //                   CRLF
@@ -113,33 +113,58 @@ impl Headers {
         values.push(content);
     }
 
-    /// Returns the values of a header given its name.
-    ///
-    /// # Examples
-    /// ```
-    /// use wruster::http::headers::{Headers, Header};
-    ///
-    /// let mut headers = Headers::new();
-    /// let name = String::from("name");
-    /// let header = Header{
-    ///  name,
-    /// value:String::from("value")
-    /// };
-    /// headers.add(header);
-    /// let value = headers.get("name");
-    /// assert_eq!(
-    ///    value,
-    ///    Some(
-    ///        &vec!(String::from("value"))
-    ///     )
-    /// );
-    /// ```
+    /**
+    Returns the values of a header given its name.
+
+    # Examples
+    ```
+    use wruster::http::headers::{Headers, Header};
+
+    let mut headers = Headers::new();
+    let name = String::from("name");
+    let header = Header{
+     name,
+    value:String::from("value")
+    };
+    headers.add(header);
+    let value = headers.get("name");
+    assert_eq!(
+       value,
+       Some(
+           &vec!(String::from("value"))
+        )
+    );
+    ```
+    */
     pub fn get(&self, name: &str) -> Option<&Vec<String>> {
         self.headers.get(name)
     }
 
+    /**
+    Writes the headers to a type implementing [``io::Write``]
+    according to the spec: https://datatracker.ietf.org/doc/html/rfc7230.
+
+     # Examples
+    ```
+    use wruster::http::headers::{Headers, Header};
+
+    let mut headers = Headers::new();
+    let name = String::from("name");
+    let header = Header{
+     name,
+    value:String::from("value")
+    };
+    headers.add(header);
+    let mut to: Vec<u8> = Vec::new();
+    headers.write(&mut to).unwrap();
+    ```
+
+    # Errors
+
+    This function will return an error if there is any problem
+    writting ``to`` parameter.
+    */
     pub fn write<T: io::Write>(&self, to: &mut T) -> ServerResult {
-        // https://www.w3.org/Protocols/rfc2616/rfc2616-sec4.html#sec4.5:
         // generic-message = start-line
         //                   *(message-header CRLF)
         //                   CRLF
@@ -171,28 +196,35 @@ impl Default for Headers {
     }
 }
 
+ /// Represents an HTTP header.
 #[derive(Debug)]
 pub struct Header {
+    /// The name of the header.
     pub name: String,
+    /// The value of the header.
     pub value: String,
 }
 
 impl Header {
-    /// .
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use wruster::http::headers::Header;
-    ///
-    /// let mut from = ;
-    /// assert_eq!(Header::read_from(&mut from), );
-    /// assert_eq!(from, );
-    /// ```
-    ///
-    /// # Errors
-    ///
-    /// This function will return an error if .
+    /**
+    Reads an header from an HTTP message in a [`io::BufReader`] according to
+    the spec: https://datatracker.ietf.org/doc/html/rfc7230.
+
+    # Examples
+
+    ```
+    use wruster::http::headers::Header;
+
+    let mut from = ;
+    assert_eq!(Header::read_from(&mut from), );
+    assert_eq!(from, );
+    ```
+
+    # Errors
+
+    Returns a [`ParseError`] if the header does not conform to the spec:
+    https://datatracker.ietf.org/doc/html/rfc7230.
+    */
     pub fn read_from<T: io::Read>(
         from: &mut io::BufReader<T>,
     ) -> Result<Option<Header>, ParseError> {
@@ -301,8 +333,30 @@ impl Header {
         Ok(Some(header))
     }
 
+    /**
+    Writes the header to a type implementing the [``io::Write``] trait.
+
+    # Examples
+
+    ```
+    use wruster::http::headers::{Headers, Header};
+
+    let mut headers = Headers::new();
+    let name = String::from("name");
+    let header = Header{
+     name,
+    value:String::from("value")
+    };
+    let mut to: Vec<u8> = Vec::new();
+    headers.write(&mut to).unwrap();
+    ```
+
+    # Errors
+
+    This function will return an error if there is any error writing
+    to the ``to`` paramerer.
+    */
     pub fn write<T: io::Write>(&self, to: &mut T) -> ServerResult {
-        // https://www.w3.org/Protocols/rfc2616/rfc2616-sec4.html#sec4.5:
         // generic-message = start-line
         //                   *(message-header CRLF)
         //                   CRLF
