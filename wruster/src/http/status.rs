@@ -1,9 +1,12 @@
 use std::convert::From;
 use std::fmt;
 
+#[allow(missing_docs)]
+/// Contains a variant for each defined status code according to
+/// the spec in: https://datatracker.ietf.org/doc/html/rfc7231#section-6.1.
 #[derive(Debug, PartialEq, Eq)]
 pub enum StatusCode {
-    // https://www.w3.org/Protocols/rfc2616/rfc2616-sec6.html
+    // https://datatracker.ietf.org/doc/html/rfc7231#section-6.1
     Continue,
     SwitchingProtocols,
     OK,
@@ -48,6 +51,19 @@ pub enum StatusCode {
 }
 
 impl StatusCode {
+    
+    /**
+    Given a status code returns a string containing the reason associated to it.
+
+    # Examples
+
+    ```
+    use wruster::http::status::StatusCode;
+
+    let status_code = StatusCode::OK;
+    assert_eq!(status_code.reason(), "OK");
+    ```
+    */
     pub fn reason(&self) -> &'static str {
         match self {
             StatusCode::Continue => "Continue",
