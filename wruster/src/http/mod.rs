@@ -160,13 +160,43 @@ impl HttpRequestLine {
     }
 }
 
+/// Body holds the body part of an Http Message.
 pub struct Body<'a> {
+    /// The content type of body.
     pub content_type: Option<mime::Mime>,
+    /// The length, in bytes, of the body.
     pub content_length: u64,
+    /// The content of the body, if any.
     pub content: Box<dyn Read + 'a>,
 }
 
 impl<'a> Body<'a> {
+    /**
+    Writes the content of body to a type implementing the [``io::Write``] trait.
+
+    # Examples
+
+    ```
+    use std::io::Cursor;
+    use wruster::http::Body;
+
+    let content = "content";
+    let mut body = Body {
+        content: Box::new(Cursor::new(content)),
+        content_type: Some(mime::TEXT_PLAIN),
+        content_length: content.len() as u64,
+    };
+    let mut to: Vec<u8> = Vec::new();
+    body.write(&mut to).unwrap();
+    let got_content = String::from_utf8(to).unwrap();
+    assert_eq!(content, &got_content)
+    ```
+
+    # Errors
+
+    This function will return an error if there is any error writing
+    to the ``to`` paramerer.
+    */
     pub fn write<T: io::Write>(&mut self, to: &mut T) ->  HttpResult<()> {
         let src = &mut self.content;
         if let Err(err) = io::copy(src, to) {
