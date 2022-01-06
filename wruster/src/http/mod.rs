@@ -62,7 +62,7 @@ impl<'a> Request<'a> {
         debug!("headers parsed: {:?}", headers);
 
         let body = Body::read_from(reader, &headers)?;
-        debug!("body read, length: {:?}", body);
+        debug!("body read: {:?}", body);
 
         let request = Request {
             method: request_line.method,
@@ -223,7 +223,7 @@ impl<'a> Body<'a> {
         headers: &Headers,
     ) -> Result<Option<Body<'a>>, HttpError> {
         if let Some(encoding) = headers.get("Transfer-Enconding") {
-            // Transfer-Enconding entity is not supported.
+            // Transfer-Encoding entity is not supported.
             if encoding.len() != 1 {
                 let msg = "invalid Transfer-Enconding header".to_string();
                 return Err(Unknown(msg));
