@@ -55,6 +55,7 @@ impl Router {
         routes.add_value(&route.as_bytes(), router_handlers);
     }
 
+    #[allow(dead_code)]
     fn get(&self, route: &str, method: HttpMethod) -> Option<Arc<HttpHandler>> {
         let routes = self.routes.borrow();
         let method_actions = match routes.get_value(route.as_bytes()) {
