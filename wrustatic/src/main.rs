@@ -1,6 +1,5 @@
 use std::env;
 use std::process;
-use std::str::FromStr;
 use std::time::Duration;
 
 use wruster::handlers::{log_middleware, serve_static};
