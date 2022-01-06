@@ -7,19 +7,42 @@ mod trie;
 use crate::http::{HttpMethod, Request, Response};
 use trie::Trie;
 
+/// Defines a type alias for the Http Handlers associated to a [``Router`].
 pub type HttpHandler = Box<dyn Fn(Request) -> Response + Send + Sync>;
 
+/// Router holds the Handlers that will attend a set of the http routes and methods.
 pub struct Router {
     routes: AtomicRefCell<Trie<MethodHandlers>>,
 }
 
 impl Router {
+    /**
+    Creates a new [`Router`] empty Router.
+
+    # Examples
+
+    ```
+    use wruster::router::Router;
+
+    let router = Router::new();
+    ```
+    */
     pub fn new() -> Router {
         Router {
             routes: AtomicRefCell::new(Trie::new()),
         }
     }
-
+    
+    /// Adds a route; a route consists on path, and Http verb and a handler
+    /// that will attend the requests for that path and Http Verb. Note that
+    /// the router will select the most concrete handler that is, at least,
+    /// registered for a path that is parent of a request path. For instance:
+    /// if a handler has been registered for the GET's in path "/a", a GET
+    /// request to a the path "/a/b" the will be attended with that Handler.
+    ///
+    /// # Examples
+    /// TODO
+    ///
     pub fn add(&self, route: &str, method: HttpMethod, action: HttpHandler) {
         // We prioritize keeping the code of the Trie simpler over adding the
         // routes faster.
@@ -32,7 +55,7 @@ impl Router {
         routes.add_value(&route.as_bytes(), router_handlers);
     }
 
-    pub fn get(&self, route: &str, method: HttpMethod) -> Option<Arc<HttpHandler>> {
+    fn get(&self, route: &str, method: HttpMethod) -> Option<Arc<HttpHandler>> {
         let routes = self.routes.borrow();
         let method_actions = match routes.get_value(route.as_bytes()) {
             None => return None,
@@ -41,7 +64,7 @@ impl Router {
         method_actions.get_action(method)
     }
 
-    pub fn get_prefix(&self, route: String, method: HttpMethod) -> Option<Arc<HttpHandler>> {
+    pub(crate) fn get_prefix(&self, route: String, method: HttpMethod) -> Option<Arc<HttpHandler>> {
         let routes = self.routes.borrow();
         let method_actions = match routes.get_value_prefix(route.as_bytes()) {
             None => return None,
@@ -57,7 +80,7 @@ impl Default for Router {
     }
 }
 
-pub struct MethodHandlers {
+pub(crate) struct MethodHandlers {
     actions: AtomicRefCell<Vec<Option<Arc<HttpHandler>>>>,
 }
 
@@ -80,12 +103,8 @@ impl MethodHandlers {
     }
 }
 
-pub struct MethodHanlder {
-    pub method: HttpMethod,
-    pub action: HttpHandler,
-}
 
-pub trait Normalize
+pub(crate) trait Normalize
 where
     Self: std::marker::Sized,
 {
