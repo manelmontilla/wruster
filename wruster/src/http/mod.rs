@@ -10,7 +10,8 @@ use std::str::FromStr;
 pub mod errors;
 /// Contains all the types needed to read and write Http headers.
 pub mod headers;
-mod status;
+/// Contains the definition of all the standard Http status code.
+pub mod status;
 pub use self::status::StatusCode;
 
 use crate::errors::HttpError;
@@ -24,7 +25,7 @@ mod tests;
 /// Defines the returned by the methods and functions of this module.
 pub type HttpResult<T> = Result<T, HttpError>;
 
-/// Represents an Http Request.
+/// Represents a Http Request.
 #[derive(Debug)]
 pub struct Request<'a> {
     /// The [``HttpMethod``] of the request.
@@ -40,10 +41,13 @@ pub struct Request<'a> {
 }
 
 impl<'a> Request<'a> {
-
     /**
     Reads a request from an HTTP message in a type implementing [`io::Read`] according to
     the spec: https://datatracker.ietf.org/doc/html/rfc7230.
+
+    # Examples.
+
+    TODO
 
     # Errors
 
@@ -205,19 +209,24 @@ impl<'a> Body<'a> {
         Ok(())
     }
 
-    /// .
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use wruster::http::Body;
-    ///
-    /// assert_eq!(Body::read_from(from, headers), );
-    /// ```
-    ///
-    /// # Errors
-    ///
-    /// This function will return an error if .
+    /**
+
+    Reads the body of a Http message given the Headers of the message and
+    a type implementing the [`io::Read`] trait that contains content of the
+    body. The method assumes that the content and the headers follow the spec
+    https://datatracker.ietf.org/doc/html/rfc7230#page-27. By now, the method only
+    supports the ``Content-Length`` header and not ``Transfer-Encoding`` header.
+
+    # Examples
+
+    TODO
+
+    # Errors
+
+    This function will return an error if the ``Headers`` parameter contains a
+    ``Transfer-Encoding`` header or if it contains more that one value a ``Content-Length``
+    header.
+    */
     pub fn read_from<T: io::Read + 'a>(
         from: T,
         headers: &Headers,
@@ -296,14 +305,55 @@ impl fmt::Debug for Body<'_> {
     }
 }
 
+/// Represents a Http Response.
 #[derive(Debug)]
 pub struct Response<'a> {
+    /// The http [``StatusCode``] of the response.
     pub status: StatusCode,
+    /// The [``Headers``] of the response.
     pub headers: Headers,
+    /// The body, if any, of the response.
     pub body: Option<Body<'a>>,
 }
 
 impl<'a> Response<'a> {
+    /**
+    Writes a [``Response``] to a type implementing the [``io::Write``] trait.
+
+    # Examples
+
+    ```
+    use std::io::Cursor;
+    use wruster::http::headers::{Header, Headers};
+    use wruster::http::{Body, Response, StatusCode};
+
+       let content = "#wruster";
+    let body = Body {
+    content: Box::new(Cursor::new(content)),
+    content_type: Some(mime::TEXT_PLAIN),
+    content_length: content.len() as u64,
+    };
+
+    let mut headers = Headers::new();
+    headers.add(Header {
+    name: String::from("Content-Length"),
+    value: String::from("8"),
+    });
+    let mut response = Response {
+    status: StatusCode::OK,
+    headers: headers,
+    body: Some(body),
+    };
+
+    let mut to: Vec<u8> = Vec::new();
+    response.write(&mut to).unwrap();
+    ```
+
+    # Errors
+
+    This function will return an error if there is any error writing
+    to the ``to`` paramerer.
+    */
     pub fn write<T: io::Write>(&mut self, to: &mut T) -> HttpResult<()> {
         let payload = format!("HTTP/1.1 {:#}\r\n", self.status);
         if let Err(err) = to.write(payload.as_bytes()) {
@@ -324,6 +374,16 @@ impl<'a> Response<'a> {
         body.write(to)
     }
 
+
+    /// Creates a Request with the given http [``StatusCode``].
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use wruster::http::Response;
+    /// use wruster::http::status::StatusCode;
+    /// let response = Response::from_status(StatusCode::OK);
+    /// ```
     pub fn from_status(status: StatusCode) -> Response<'a> {
         let headers = Headers::new();
         Response {
@@ -333,6 +393,19 @@ impl<'a> Response<'a> {
         }
     }
 
+    /**
+    Reads a response from an HTTP message in a type implementing [`io::Read`] according to
+    the spec: https://datatracker.ietf.org/doc/html/rfc7230.
+
+    # Examples.
+
+    TODO
+
+    # Errors
+
+    Returns a [``HttpError``] if there is any problem reading from ``from`` or the message
+    does not conform to the spec: https://datatracker.ietf.org/doc/html/rfc7230.
+    */
     pub fn read_from<T: io::Read + 'a>(from: T) -> Result<Response<'a>, HttpError> {
         // https://www.w3.org/Protocols/rfc2616/rfc2616-sec6.html
         //    Status-Line
@@ -467,7 +540,8 @@ impl StatusLine {
         Ok(())
     }
 }
-
+#[allow(missing_docs)]
+/// Contains a variant per each Http Method.
 #[derive(Debug, Copy, Clone)]
 #[repr(u16)]
 pub enum HttpMethod {
@@ -483,6 +557,8 @@ pub enum HttpMethod {
 }
 
 impl HttpMethod {
+    /// The [``HttpMethod``] variants are represented using a [``u16``], this
+    /// methods returns the variant with the highest value.
     pub fn get_last() -> HttpMethod {
         Self::PATCH
     }
