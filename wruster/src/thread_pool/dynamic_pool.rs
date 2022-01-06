@@ -247,9 +247,10 @@ mod tests {
 
         // Signal the first thread to finish.
         sender.send(()).unwrap();
-        // Give time for worker to finish the task and be ready
-        // TODO: This test could ne flaky, find a way to avoid it.
-        thread::yield_now();
+        // Give time for worker to finish the task and be ready to accept
+        // another action.
+        // TODO: This test could be flaky.
+        thread::sleep(Duration::from_secs(1));
 
         // Try run the second action.
         let result2 = Arc::new(Mutex::new(String::new()));

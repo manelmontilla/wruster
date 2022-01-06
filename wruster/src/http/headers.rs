@@ -211,13 +211,7 @@ impl Header {
 
     # Examples
 
-    ```
-    use wruster::http::headers::Header;
-
-    let mut from = ;
-    assert_eq!(Header::read_from(&mut from), );
-    assert_eq!(from, );
-    ```
+    ## TODO
 
     # Errors
 
