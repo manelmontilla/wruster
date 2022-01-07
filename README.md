@@ -1,5 +1,7 @@
 # Wruster
 
+[![Rust](https://github.com/manelmontilla/wruster/actions/workflows/ci.yml/badge.svg)](https://github.com/manelmontilla/wruster/actions/workflows/ci.yml)
+
 Wruster is a experimental web server.
 
 Even though it´s a fully functional web server is intended to experiment and no
