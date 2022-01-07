@@ -5,10 +5,15 @@ Wruster is a experimental web server.
 Even though it´s a fully functional web server is intended to experiment and no
 to be used in production.
 
+## Status
+
+The project is still in alfa status.
+
 ## Example
 
-This small program runs a web server listening at: , that accepts GET's at the
-root and returns a Http Response with the payload ``Hello world``.
+This small program runs a web server listening at: 127.0.0.1:8082, that accepts
+GET's at the root path and returns a Http Response with the payload ``hello
+world``.
 
 ```rust
 use env_logger::Builder;
@@ -67,7 +72,7 @@ The web server it`s composed basically of three high level components or pseudo-
 
 ### HTTP Messages plumbing
 
-Contains all the types needed to represent Http Requests and Responses, and to
+Contains all the types needed to represent HTTP Messages, and to
 read and write them from and to the wire.
 
 ### Router
