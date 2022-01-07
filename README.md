@@ -72,7 +72,7 @@ level, not at the constant level.
 
 ## Design
 
-The web server it`s composed basically of three high level components.
+The web server is composed basically of three high level components.
 
 ### HTTP Messages plumbing
 
