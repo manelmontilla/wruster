@@ -1,11 +1,6 @@
-[package]
-name = "web_server"
-version = "0.1.0"
-edition = "2018"
+[workspace]
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
-[dependencies]
-mime = "0.3.16"
-mime_guess = "2.0.3"
-toml = "0.4.2"
+members = [
+"wruster",
+"wrustatic"
+]
