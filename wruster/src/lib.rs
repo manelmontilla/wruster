@@ -91,7 +91,7 @@ pub struct Timeouts {
     pub write_response_timeout: time::Duration,
 }
 
-/// Represents a web server that can be run passing a [`router::Router`].
+/// Represents a web server that can be run by passing a [`router::Router`].
 pub struct Server {
     stop: Arc<AtomicBool>,
     addr: Option<String>,
@@ -248,7 +248,7 @@ impl Server {
                 };
 
                 if pool.run(Box::new(action)).is_err() {
-                    error!("server to busy to handle connection with: {}", src_addr);
+                    error!("server too busy to handle connection with: {}", src_addr);
                     handle_busy(stream, timeouts.clone(), src_addr);
                 }
             }
