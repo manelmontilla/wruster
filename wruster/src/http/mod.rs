@@ -22,7 +22,7 @@ use headers::*;
 #[cfg(test)]
 mod tests;
 
-/// Defines the returned by the methods and functions of this module.
+/// Defines the results returned by the methods and functions of this module.
 pub type HttpResult<T> = Result<T, HttpError>;
 
 /// Represents a Http Request.
