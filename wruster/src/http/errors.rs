@@ -21,7 +21,7 @@ impl fmt::Display for HttpError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Unknown(msg) => write!(f, "{}", msg),
-            Self::ConnectionClosed => write!(f, "Connection Closed"),
+            Self::ConnectionClosed => write!(f, "connection closed"),
             Self::Timeout => write!(f, "operation timeout"),
         }
     }

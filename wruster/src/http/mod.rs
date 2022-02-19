@@ -14,6 +14,8 @@ pub mod headers;
 pub mod status;
 pub use self::status::StatusCode;
 
+pub mod version;
+
 use crate::errors::HttpError;
 use crate::errors::HttpError::{ConnectionClosed, Timeout, Unknown};
 
@@ -201,7 +203,7 @@ impl<'a> Body<'a> {
     This function will return an error if there is any error writing
     to the ``to`` paramerer.
     */
-    pub fn write<T: io::Write>(&mut self, to: &mut T) ->  HttpResult<()> {
+    pub fn write<T: io::Write>(&mut self, to: &mut T) -> HttpResult<()> {
         let src = &mut self.content;
         if let Err(err) = io::copy(src, to) {
             return Err(HttpError::Unknown(err.to_string()));
@@ -357,7 +359,7 @@ impl<'a> Response<'a> {
     pub fn write<T: io::Write>(&mut self, to: &mut T) -> HttpResult<()> {
         let payload = format!("HTTP/1.1 {:#}\r\n", self.status);
         if let Err(err) = to.write(payload.as_bytes()) {
-           return Err(HttpError::Unknown(err.to_string()));
+            return Err(HttpError::Unknown(err.to_string()));
         };
         if self.body.is_none() {
             self.headers.add(Header {
@@ -373,7 +375,6 @@ impl<'a> Response<'a> {
         let body = self.body.as_mut().unwrap();
         body.write(to)
     }
-
 
     /// Creates a Request with the given http [``StatusCode``].
     ///

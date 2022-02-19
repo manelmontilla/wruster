@@ -43,6 +43,7 @@ fn main() {
 ```
 */
 
+use std::error::Error as StdError;
 use std::io::{Error, ErrorKind};
 use std::net::{SocketAddr, TcpStream};
 use std::path::PathBuf;
@@ -51,7 +52,6 @@ use std::sync::Arc;
 use std::thread::JoinHandle;
 use std::{io::Write, time};
 use std::{net, thread};
-use std::error::Error as StdError;
 
 #[macro_use]
 extern crate log;
@@ -72,12 +72,15 @@ use router::{Normalize, Router};
 
 use crate::timeout_stream::TimeoutStream;
 
+pub mod client;
+
+pub use client::Client;
+
 /// Defines the default max time for a request to be read
 pub const DEFAULT_READ_REQUEST_TIMEOUT: time::Duration = time::Duration::from_secs(60);
 
 /// Defines the default max time for a response to be written
 pub const DEFAULT_WRITE_RESPONSE_TIMEOUT: time::Duration = time::Duration::from_secs(60);
-
 
 /// Defines the result type returned from the [``Server``] methods.
 pub type ServerResult = Result<(), Box<dyn StdError>>;

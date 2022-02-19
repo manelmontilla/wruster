@@ -104,7 +104,6 @@ impl MethodHandlers {
     }
 }
 
-
 pub(crate) trait Normalize
 where
     Self: std::marker::Sized,
