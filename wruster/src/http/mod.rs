@@ -14,7 +14,8 @@ pub mod headers;
 pub mod status;
 pub use self::status::StatusCode;
 
-pub mod version;
+mod version;
+pub use self::version::Version;
 
 use crate::errors::HttpError;
 use crate::errors::HttpError::{ConnectionClosed, Timeout, Unknown};

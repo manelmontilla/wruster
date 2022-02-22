@@ -1,6 +1,8 @@
-// use std::str::FromStr;
+use std::convert::From;
 
-// use crate::http::*;
+use std::io::Cursor;
+
+use crate::http::*;
 
 pub struct Client {}
 
@@ -12,15 +14,45 @@ pub struct Client {}
 //     }
 // }
 
-// #[cfg(test)]
-// mod test {
-//    use super::*;
+trait RequestBuilder<'a> {
+    fn into_request(&'a self, method: HttpMethod, url: String) -> Request<'a>;
+}
 
-//    #[test]
-//   fn  do_a_request() {
-//     let c = Client::new();
-//     let r = Request::read_from_str("GET / HTTP/1.1\r\n\r\n").unwrap();
-//     c.run(r);
-//   }
+impl<'a> RequestBuilder<'a> for str {
+    fn into_request(self: &'a str, method: HttpMethod, url: String) -> Request<'a> {
+        Request {
+            version: Version::HTTP1_1.to_string(),
+            method: method,
+            uri: url,
+            headers: headers::Headers::new(),
+            body: Some(Body::from(self)),
+        }
+    }
+}
 
-// }
+impl<'a> From<&'a str> for Body<'a> {
+    fn from(from: &'a str) -> Self {
+        Body {
+            content_length: from.len() as u64,
+            content_type: Some(mime::TEXT_PLAIN),
+            content: Box::new(Cursor::new(from)),
+        }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    //    #[test]
+    //   fn  do_a_request() {
+    //     let c = Client::new();
+    //     let r = Request::read_from_str("GET / HTTP/1.1\r\n\r\n").unwrap();
+    //     c.run(r);
+    //   }
+
+    #[test]
+    fn build_request_from_str() {
+        let r = "whatevert".into_request(HttpMethod::GET, "https:://example.com".to_string());
+    }
+}
