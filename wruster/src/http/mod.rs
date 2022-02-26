@@ -101,6 +101,33 @@ impl<'a> Request<'a> {
     pub fn read_from_str(from: &str) -> Result<Request<'_>, HttpError> {
         Request::read_from(Cursor::new(from))
     }
+
+    pub fn from<T>(f: &'a T, mime_type: mime::Mime, method: HttpMethod, url: String) -> Self
+    where
+        T: IntoRequest<'a>,
+    {
+        IntoRequest::into(f, mime_type, method, url)
+    }
+}
+
+pub trait IntoRequest<'a> {
+    fn into(&'a self, mime_type: mime::Mime, method: HttpMethod, url: String) -> Request<'a>;
+}
+
+impl<'a, T> IntoRequest<'a> for &'a T
+where
+    &'a T: IntoBody<'a>,
+{
+    fn into(&'a self, mime_type: mime::Mime, method: HttpMethod, url: String) -> Request<'a> {
+        let body = IntoBody::into(self, mime_type);
+        Request {
+            body: Some(body),
+            headers: Headers::new(),
+            method: method,
+            uri: url,
+            version: Version::HTTP1_1.to_string(),
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -296,6 +323,13 @@ impl<'a> Body<'a> {
         };
         Ok(Some(body))
     }
+
+    pub fn from<T>(f: &'a T, mime_type: mime::Mime) -> Self
+    where
+        T: IntoBody<'a>,
+    {
+        IntoBody::into(f, mime_type)
+    }
 }
 
 impl fmt::Debug for Body<'_> {
@@ -306,6 +340,10 @@ impl fmt::Debug for Body<'_> {
             self.content_type, self.content_length
         )
     }
+}
+
+pub trait IntoBody<'a> {
+    fn into(&'a self, mime_type: mime::Mime) -> Body<'a>;
 }
 
 /// Represents a Http Response.
