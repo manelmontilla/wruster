@@ -324,6 +324,13 @@ impl<'a> Body<'a> {
         Ok(Some(body))
     }
 
+    /**
+    Creates a Body from value of a type implementing the trait [`IntoBody`]
+
+    # Examples
+
+    TODO
+    */
     pub fn from<T>(f: &'a T, mime_type: mime::Mime) -> Self
     where
         T: IntoBody<'a>,
@@ -342,6 +349,11 @@ impl fmt::Debug for Body<'_> {
     }
 }
 
+/// Used to convert an immutable reference to a Body.
+///
+/// # Examples
+///
+///  TODO
 pub trait IntoBody<'a> {
     fn into(&'a self, mime_type: mime::Mime) -> Body<'a>;
 }

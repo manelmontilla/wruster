@@ -14,21 +14,6 @@ pub struct Client {}
 //     }
 // }
 
-// trait RequestBuilder<'a> {
-//     fn into_request(&'a self, method: HttpMethod, url: String) -> Request<'a>;
-// }
-
-// impl<'a> RequestBuilder<'a> for str {
-//     fn into_request(self: &'a str, method: HttpMethod, url: String) -> Request<'a> {
-//         Request {
-//             version: Version::HTTP1_1.to_string(),
-//             method: method,
-//             uri: url,
-//             headers: headers::Headers::new(),
-//             body: Some(Body::from(self)),
-//         }
-//     }
-// }
 
 impl<'a> From<&'a str> for Body<'a> {
     fn from(from: &'a str) -> Self {
