@@ -22,6 +22,9 @@ use crate::errors::HttpError::{ConnectionClosed, Timeout, Unknown};
 
 use headers::*;
 
+/// Contains a HTTP client implementation.
+pub mod client;
+
 #[cfg(test)]
 mod tests;
 
@@ -102,6 +105,8 @@ impl<'a> Request<'a> {
         Request::read_from(Cursor::new(from))
     }
 
+    /// Converts an immutable reference to a value implementing the [``IntoRequest``] trait
+    /// to a Request.
     pub fn from<T>(f: &'a T, mime_type: mime::Mime, method: HttpMethod, url: String) -> Self
     where
         T: IntoRequest<'a>,
@@ -110,7 +115,10 @@ impl<'a> Request<'a> {
     }
 }
 
+/// Converts an immutable reference to a Request given [``mime::Mime``] type, a
+/// [``HttpMethod``] and a url.
 pub trait IntoRequest<'a> {
+    /// Performs the conversion.
     fn into(&'a self, mime_type: mime::Mime, method: HttpMethod, url: String) -> Request<'a>;
 }
 
@@ -355,7 +363,18 @@ impl fmt::Debug for Body<'_> {
 ///
 ///  TODO
 pub trait IntoBody<'a> {
+    /// Performs the conversion.
     fn into(&'a self, mime_type: mime::Mime) -> Body<'a>;
+}
+
+impl<'a> IntoBody<'a> for &'a str {
+    fn into(&'a self, mime_type: mime::Mime) -> Body<'a> {
+        Body {
+            content_length: self.len() as u64,
+            content_type: Some(mime_type),
+            content: Box::new(Cursor::new(self)),
+        }
+    }
 }
 
 /// Represents a Http Response.

@@ -72,10 +72,6 @@ use router::{Normalize, Router};
 
 use crate::timeout_stream::TimeoutStream;
 
-pub mod client;
-
-pub use client::Client;
-
 /// Defines the default max time for a request to be read
 pub const DEFAULT_READ_REQUEST_TIMEOUT: time::Duration = time::Duration::from_secs(60);
 
