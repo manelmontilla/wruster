@@ -1,20 +1,23 @@
 use std::convert::From;
 
 use std::io::Cursor;
+use std::net::TcpStream;
 
 use crate::http::*;
 
-pub struct Client {}
+mod connection_pool;
 
-impl Client {
-    pub fn new() -> Self {
-        Self {}
-    }
+// pub struct Client {}
 
-    // pub fn run(self, request: Request) -> Response {
+// impl Client {
+//     pub fn new() -> Self {
+//         Self {}
+//     }
 
-    // }
-}
+//     pub fn run(self, request: Request) -> Response {
+        
+//     }
+// }
 
 #[cfg(test)]
 mod test {
