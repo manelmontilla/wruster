@@ -7,11 +7,20 @@ use crate::http::*;
 
 mod connection_pool;
 
-// pub struct Client {}
+use connection_pool::Pool;
+
+// pub struct Client {
+//     connection_pool: Pool<TcpStream>
+// }
 
 // impl Client {
 //     pub fn new() -> Self {
-//         Self {}
+//         let connection_pool = Pool::new(|addr|{
+//             TcpStream::connect(addr).unwrap()
+//         });
+//         Self {
+//             connection_pool
+//         }
 //     }
 
 //     pub fn run(self, request: Request) -> Response {
