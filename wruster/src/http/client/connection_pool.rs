@@ -1,42 +1,54 @@
+use std::borrow::BorrowMut;
 use std::collections::HashMap;
 use std::hash::Hash;
 use std::io::{Read, Write};
+use atomic_refcell::AtomicRefCell;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{sync_channel, RecvTimeoutError, SyncSender, TrySendError};
 use std::sync::{Arc, RwLock};
 use std::thread;
 use std::time::Duration;
 
+#[derive(Debug)]
 pub enum Error {
     RoodtripError(String),
 }
 
-type Roundtrip<T: Read + Write + Send> = Box<dyn Fn(T) -> T>;
-type Sourcer<T: Read + Write + Send> = Box<dyn Fn(String) -> T>;
+/*trait Roundtrip<T> where T: Read + Write + Send {
+}*/
 
-struct Pool<T: Read + Write + Send> {
-    connections: RwLock<HashMap<String, T>>,
-    sourcer: Sourcer<T>,
+//type Roundtrip<T: Read + Write + Send> = Box<dyn Fn(T) -> T>;
+// type Sourcer<T: Read + Write + Send> = Box<dyn Fn(String) -> T>;
+
+struct Pool<T: Read + Write + Send>
+where T: Read + Write + Send {
+    connections: AtomicRefCell<RwLock<HashMap<String, T>>>,
+    sourcer: Box<dyn Fn(String) -> T>,
 }
 
 impl<T: Read + Write + Send> Pool<T> {
-    pub fn new(sourcer: Sourcer<T>) -> Self {
+    pub fn new(sourcer: Box<dyn Fn(String) -> T>) -> Self {
         let map: HashMap<String, T> = HashMap::new();
         Pool {
-            connections: RwLock::new(map),
+            connections: AtomicRefCell::new(RwLock::new(map)),
             sourcer: sourcer,
         }
     }
 
-    pub fn roundtrip(mut self, to: String, roundtriper: Roundtrip<T>) -> Result<(), Error> {
-        let connections = self.connections.get_mut().unwrap();
+    pub fn roundtrip(self, to: String, roundtriper: Box<dyn Fn(T) -> T>) -> Result<(), Error> {
+        let mut connections = self.connections.borrow_mut();
+        let connections = connections.get_mut().unwrap();
         let connection = match connections.remove(&to) {
             Some(connection) => connection,
             None => (self.sourcer)(to.clone()),
         };
+        // We release the lock here so we don't block all the connections while
+        // executing the roundtrip.
         drop(connections);
         let connection = (roundtriper)(connection);
-        let connections = self.connections.get_mut().unwrap();
+        // Return the connection to the pool.
+        let mut connections = self.connections.borrow_mut();
+        let connections = connections.get_mut().unwrap();
         connections.insert(to, connection);
         Ok(())
     }
@@ -46,20 +58,29 @@ impl<T: Read + Write + Send> Pool<T> {
 mod test {
     // use std::net::TcpStream;
 
-    // use super::*;
+    use super::*;
 
     fn copy_processor(src: &[u8], dst: &mut Vec<u8>) -> std::io::Result<usize> {
-        todo!()
+        for  i in 0..src.len() {
+            dst.push(src[i])
+        }
+        Ok(src.len())
     }
 
     #[test]
     fn test() {
-        let processor = Processor::new(copy_processor);
-        // let sourcer = |addr: String| -> Vec<u8> {
-        //     Vec::<u8>::new()
-        // };
-        // let pool = Pool::new(Box::new(sourcer));
-        // pool.roundtrip("a", roundtriper)
+        let sourcer = |_: String| -> Processor<fn (&[u8], &mut Vec<u8>) -> Result<usize, std::io::Error>> {
+            Processor::new(copy_processor)
+        };
+        let pool = Pool::new(Box::new(sourcer));
+        // type Roundtrip<T: Read + Write + Send> = Box<dyn Fn(T) -> T>;
+        let roundtrip =
+            |mut p: Processor<fn (&[u8], &mut Vec<u8>) -> Result<usize, std::io::Error>>| {
+                 let w = &mut p;
+                 w.write("never gonna give you up".as_bytes()).unwrap();
+                 p
+            };
+        pool.roundtrip("a".to_string(), Box::new(roundtrip)).unwrap();
     }
 
     use std::{
