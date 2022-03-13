@@ -1,153 +1,112 @@
 use std::collections::HashMap;
-use std::error;
+use std::sync::mpsc;
+use std::sync::{Arc, RwLock};
+use std::{thread, fmt};
+use std::time::{Duration, Instant};
 
-use std::io::{Read, Write};
-use std::sync::RwLock;
+const DEFAULT_IDLE_RESOURCE_TIMEOUT: Duration = Duration::from_secs(30);
+const EXPIRE_RESOURCE_CYCLE_TIME: Duration = Duration::from_secs(30);
+const MAX_RESOURCES: usize = 100;
 
-#[derive(Debug)]
-pub enum Error {
-    RoodtripError(String),
-    SourcerError(Box<dyn error::Error>),
+
+
+pub struct PoolResource<T> where T: Send {
+    resource: T,
+    lastUsed: Instant,
 }
 
-/*trait Roundtrip<T> where T: Read + Write + Send {
-}*/
-
-//type Roundtrip<T: Read + Write + Send> = Box<dyn Fn(T) -> T>;
-// type Sourcer<T: Read + Write + Send> = Box<dyn Fn(String) -> T>;
-
-pub struct Pool<T, F>
-where
-    T: Read + Write + Send,
-    F: Fn(String) -> Result<T, Box<dyn error::Error>>,
-{
-    connections: RwLock<HashMap<String, T>>,
-    sourcer: F,
-}
-
-impl<T, F> Pool<T, F>
-where
-    T: Read + Write + Send,
-    F: Fn(String) -> Result<T, Box<dyn error::Error>>,
-{
-    pub fn new(sourcer: F) -> Self {
-        let map: HashMap<String, T> = HashMap::new();
-        Pool {
-            connections: RwLock::new(map),
-            sourcer: sourcer,
+impl<T> PoolResource<T>  where T: Send {
+    pub fn new(resource: T) -> Self {
+        PoolResource {
+            resource,
+            lastUsed: Instant::now(),
         }
     }
 
-    pub fn roundtrip<G>(&mut self, to: String, roundtriper: G) -> Result<(), Error>
-    where
-        G: FnOnce(T) -> T + Send + 'static,
-    {
-        let connections = self.connections.get_mut().unwrap();
-        let connection = match connections.remove(&to) {
-            Some(connection) => connection,
-            None => match (self.sourcer)(to.clone()) {
-                Err(err) => return Err(Error::SourcerError(err)),
-                Ok(connection) => connection,
-            },
+    pub fn resource(&mut self) -> &mut T {
+        &mut self.resource
+    }
+}
+
+pub struct Pool<T> where T: Send {
+    resources: Arc<RwLock<HashMap<String, PoolResource<T>>>>,
+    expire_worker_handle: thread::JoinHandle<()>,
+    expire_worker_finish: mpsc::Sender<()>,
+}
+
+impl<T> Pool<T> where T: Send + Sync + 'static {
+    pub fn new(idle_timeout: Option<Duration>) -> Self {
+        let resources = Arc::new(RwLock::new(HashMap::new()));
+        let expire_worker_resources = Arc::clone(&resources);
+        let (expire_worker_finish, recv) = mpsc::channel();
+        let idle_timeout = match idle_timeout {
+            Some(timeout) => timeout,
+            None => DEFAULT_IDLE_RESOURCE_TIMEOUT.clone(),
         };
-        // We release the lock here so we don't block all the connections while
-        // executing the roundtrip.
-        drop(connections);
-        let connection = (roundtriper)(connection);
-        // Return the connection to the pool.
-        let connections = self.connections.get_mut().unwrap();
-        connections.insert(to, connection);
-        Ok(())
+        let expire_worker_handle = thread::spawn(move || {
+            Self::expire_connections(idle_timeout, expire_worker_resources, recv);
+        });
+        Pool {
+            resources,
+            expire_worker_handle,
+            expire_worker_finish,
+        }
+    }
+
+    pub fn expire_connections(
+        idle_timeout: Duration,
+        resources: Arc<RwLock<HashMap<String, PoolResource<T>>>>,
+        finish: mpsc::Receiver<()>,
+    ) {
+        while let Err(err) = finish.try_recv() {
+            if let mpsc::TryRecvError::Disconnected = err {
+                break;
+            }
+            let mut resources = resources.write().unwrap();
+            let now = Instant::now();
+            let conns: Vec<(String, PoolResource<T>)> = resources.drain().collect();
+            for (addr, conn) in conns {
+                if now - conn.lastUsed < idle_timeout {
+                    resources.insert(addr, conn);
+                }
+            }
+            thread::sleep(EXPIRE_RESOURCE_CYCLE_TIME);
+        }
+    }
+
+    pub fn get(&self, addr: &str) -> Option<PoolResource<T>> {
+        let mut resources = self.resources.write().unwrap();
+        match resources.remove(addr) {
+            Some(conn) => Some(conn),
+            _ => None,
+        }
+    }
+
+    pub fn insert(
+        &self,
+        addr: &str,
+        connection: PoolResource<T>,
+    ) -> Option<()> {
+        let mut connections = self.resources.write().unwrap();
+        match connections.len() {
+            MAX_RESOURCES => None,
+            _ => {
+                connections.insert(addr.to_string(), connection);
+                Some(())
+            }
+        }
     }
 }
 
 #[cfg(test)]
 mod test {
-    // use std::net::TcpStream;
-
     use super::*;
-
-    fn copy_processor(src: &[u8], dst: &mut Vec<u8>) -> std::io::Result<usize> {
-        for i in 0..src.len() {
-            dst.push(src[i])
-        }
-        Ok(src.len())
-    }
-
     #[test]
-    fn test() {
-        let sourcer = |_: String| -> Result<
-            Processor<fn(&[u8], &mut Vec<u8>) -> Result<usize, std::io::Error>>,
-            Box<dyn error::Error>,
-        > { Ok(Processor::new(copy_processor)) };
-        let mut pool = Pool::new(sourcer);
-        // type Roundtrip<T: Read + Write + Send> = Box<dyn Fn(T) -> T>;
-        let roundtrip =
-            |mut p: Processor<fn(&[u8], &mut Vec<u8>) -> Result<usize, std::io::Error>>| {
-                let w = &mut p;
-                w.write("never gonna give you up".as_bytes()).unwrap();
-                p
-            };
-        pool.roundtrip("a".to_string(), roundtrip).unwrap();
-    }
+    fn return_resource_if_exists() {
+       let pool: Pool<&str> = Pool::new(Some(Duration::from_secs(2)));
+       pool.insert("addr1", PoolResource::new("resource1"));
+       let a = pool.get(addr).unwrap();
+       let a = a.resource();
 
-    use std::{
-        collections::VecDeque,
-        io::{Read, Write},
-    };
-
-    struct Processor<F>
-    where
-        F: Fn(&[u8], &mut Vec<u8>) -> std::io::Result<usize>,
-    {
-        out: VecDeque<u8>,
-        process: F,
-    }
-
-    impl<F> Processor<F>
-    where
-        F: Fn(&[u8], &mut Vec<u8>) -> std::io::Result<usize>,
-    {
-        fn new(processor: F) -> Self {
-            Processor {
-                out: VecDeque::new(),
-                process: processor,
-            }
-        }
-    }
-
-    impl<F> Write for Processor<F>
-    where
-        F: Fn(&[u8], &mut Vec<u8>) -> std::io::Result<usize>,
-    {
-        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-            let mut out = Vec::new();
-            (self.process)(buf, &mut out)?;
-            for i in 0..out.len() {
-                self.out.push_back(out[i]);
-            }
-            Ok(out.len())
-        }
-
-        fn flush(&mut self) -> std::io::Result<()> {
-            Ok(())
-        }
-    }
-
-    impl<F> Read for Processor<F>
-    where
-        F: Fn(&[u8], &mut Vec<u8>) -> std::io::Result<usize>,
-    {
-        fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
-            let mut i = 0;
-            while i < buf.len() {
-                match self.out.pop_front() {
-                    Some(data) => buf[i] = data,
-                    None => break,
-                };
-                i += 1
-            }
-            Ok(i)
-        }
     }
 }

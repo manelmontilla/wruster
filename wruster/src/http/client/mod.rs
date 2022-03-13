@@ -1,5 +1,7 @@
 use std::error;
 use std::net::TcpStream;
+use std::sync;
+use std::thread;
 
 use crate::http::*;
 
@@ -7,51 +9,48 @@ mod connection_pool;
 
 use connection_pool::Pool;
 
-fn create_connection(addr: String) -> Result<TcpStream, Box<dyn std::error::Error>> {
-    match TcpStream::connect(addr) {
-        Ok(connetion) => Ok(connetion),
-        Err(err) => Err(Box::new(err)),
-    }
-}
-
 pub struct Client {
-    connection_pool: Pool<TcpStream, fn(String) -> Result<TcpStream, Box<dyn std::error::Error>>>,
+    connection_pool: Pool<TcpStream>,
 }
 
-impl Client {
-    pub fn new() -> Self {
-        let creator: fn(String) -> Result<TcpStream, Box<dyn std::error::Error>> =
-            create_connection;
-        let connection_pool = Pool::new(creator);
-        Self { connection_pool}
-    }
+// impl Client {
+//     pub fn new() -> Self {
+//         let connection_pool = Pool::new();
+//         Self { connection_pool }
+//     }
 
-    pub fn run(mut self, request: Request) -> Response {
-        self.connection_pool
-            .roundtrip(String::from("127.0.0.1:8081"), |mut conn| {
-                conn.flush().unwrap();
-                conn
-            })
-            .unwrap();
-        Response::from_status(StatusCode::OK)
-    }
-}
+//     pub fn run(&self, request: Request) -> Response {
+//         let conn = self.connection_pool.connection(&request.uri);
+//         Response::from_status(StatusCode::OK)
+//     }
+// }
 
-#[cfg(test)]
-mod test {
-    use super::*;
+// #[cfg(test)]
+// mod test {
+//     use std::sync::Arc;
 
-    //    #[test]
-    //   fn  do_a_request() {
-    //     let c = Client::new();
-    //     let r = Request::read_from_str("GET / HTTP/1.1\r\n\r\n").unwrap();
-    //     c.run(r);
-    //   }
+//     use super::*;
 
-    #[test]
-    fn build_request_from_str() {
-        let c = Client::new();
-        let r = Request::read_from_str("GET / HTTP/1.1\r\n\r\n").unwrap();
-        c.run(r);
-    }
-}
+//     //    #[test]
+//     //   fn  do_a_request() {
+//     //     let c = Client::new();
+//     //     let r = Request::read_from_str("GET / HTTP/1.1\r\n\r\n").unwrap();
+//     //     c.run(r);
+//     //   }
+
+//     #[test]
+//     fn build_request_from_str() {
+//         let c = Arc::new(Client::new());
+//         let mut c2 = Arc::clone(&c);
+//         let handle = thread::spawn(move || {
+//             let c = &mut c2;
+//             let r = Request::read_from_str("GET / HTTP/1.1\r\n\r\n").unwrap();
+//             let mut resp = c.run(r);
+//             let mut v: Vec<u8> = Vec::new();
+//             resp.write(&mut v).unwrap();
+//             let s = String::from_utf8(v).unwrap();
+//             println!("response {}", s);
+//         });
+//         handle.join().unwrap();
+//     }
+// }
