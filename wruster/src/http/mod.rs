@@ -200,6 +200,27 @@ impl HttpRequestLine {
             version: String::from(version),
         })
     }
+
+    pub fn write<T: io::Write>(&mut self, to: &mut T) -> HttpResult<()> {
+        // let payload = format!("HTTP/1.1 {:#}\r\n", self.status);
+        // if let Err(err) = to.write(payload.as_bytes()) {
+        //     return Err(HttpError::Unknown(err.to_string()));
+        // };
+        // if self.body.is_none() {
+        //     self.headers.add(Header {
+        //         name: String::from("Content-Length"),
+        //         value: String::from("0"),
+        //     })
+        // }
+        // self.headers.write(to)?;
+        // if self.body.is_none() {
+        //     return Ok(());
+        // }
+        // // TODO: handle possible error.
+        // let body = self.body.as_mut().unwrap();
+        // body.write(to)
+        todo!()
+    }
 }
 
 /// Body holds the body part of an Http Message.

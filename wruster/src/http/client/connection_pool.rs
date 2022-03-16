@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::sync::mpsc;
 use std::sync::{Arc, RwLock};
-use std::{thread, fmt};
+use std::thread;
 use std::time::{Duration, Instant};
 
 const DEFAULT_IDLE_RESOURCE_TIMEOUT: Duration = Duration::from_secs(30);
@@ -10,16 +10,16 @@ const MAX_RESOURCES: usize = 100;
 
 
 
-pub struct PoolResource<T> where T: Send {
+pub struct PoolResource<T> where T: Send + Sync + 'static {
     resource: T,
-    lastUsed: Instant,
+    last_used: Instant,
 }
 
-impl<T> PoolResource<T>  where T: Send {
+impl<T> PoolResource<T>  where T: Send + Sync + 'static {
     pub fn new(resource: T) -> Self {
         PoolResource {
             resource,
-            lastUsed: Instant::now(),
+            last_used: Instant::now(),
         }
     }
 
@@ -28,7 +28,7 @@ impl<T> PoolResource<T>  where T: Send {
     }
 }
 
-pub struct Pool<T> where T: Send {
+pub struct Pool<T> where T: Send + Sync + 'static {
     resources: Arc<RwLock<HashMap<String, PoolResource<T>>>>,
     expire_worker_handle: thread::JoinHandle<()>,
     expire_worker_finish: mpsc::Sender<()>,
@@ -53,7 +53,7 @@ impl<T> Pool<T> where T: Send + Sync + 'static {
         }
     }
 
-    pub fn expire_connections(
+    fn expire_connections(
         idle_timeout: Duration,
         resources: Arc<RwLock<HashMap<String, PoolResource<T>>>>,
         finish: mpsc::Receiver<()>,
@@ -66,7 +66,7 @@ impl<T> Pool<T> where T: Send + Sync + 'static {
             let now = Instant::now();
             let conns: Vec<(String, PoolResource<T>)> = resources.drain().collect();
             for (addr, conn) in conns {
-                if now - conn.lastUsed < idle_timeout {
+                if now - conn.last_used < idle_timeout {
                     resources.insert(addr, conn);
                 }
             }
@@ -102,11 +102,11 @@ impl<T> Pool<T> where T: Send + Sync + 'static {
 mod test {
     use super::*;
     #[test]
-    fn return_resource_if_exists() {
+    fn returns_resource() {
        let pool: Pool<&str> = Pool::new(Some(Duration::from_secs(2)));
        pool.insert("addr1", PoolResource::new("resource1"));
-       let a = pool.get(addr).unwrap();
-       let a = a.resource();
-
+       let mut pool_resource = pool.get("addr1").unwrap();
+       let resource = pool_resource.resource();
+       assert_eq!(resource, &"resource1")
     }
 }
