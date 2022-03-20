@@ -1,5 +1,7 @@
 use std::collections::HashMap;
-use std::sync::mpsc;
+use std::ops::Sub;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{mpsc, Mutex};
 use std::sync::{Arc, RwLock};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -8,14 +10,18 @@ const DEFAULT_IDLE_RESOURCE_TIMEOUT: Duration = Duration::from_secs(30);
 const EXPIRE_RESOURCE_CYCLE_TIME: Duration = Duration::from_secs(30);
 const MAX_RESOURCES: usize = 100;
 
-
-
-pub struct PoolResource<T> where T: Send + Sync + 'static {
+pub struct PoolResource<T>
+where
+    T: Send + Sync + 'static,
+{
     resource: T,
     last_used: Instant,
 }
 
-impl<T> PoolResource<T>  where T: Send + Sync + 'static {
+impl<T> PoolResource<T>
+where
+    T: Send + Sync + 'static,
+{
     pub fn new(resource: T) -> Self {
         PoolResource {
             resource,
@@ -28,40 +34,45 @@ impl<T> PoolResource<T>  where T: Send + Sync + 'static {
     }
 }
 
-pub struct Pool<T> where T: Send + Sync + 'static {
+pub struct Pool<T>
+where
+    T: Send + Sync + 'static,
+{
     resources: Arc<RwLock<HashMap<String, PoolResource<T>>>>,
-    expire_worker_handle: thread::JoinHandle<()>,
-    expire_worker_finish: mpsc::Sender<()>,
+    expire_worker_handle: Option<thread::JoinHandle<()>>,
+    expire_worker_stop: Arc<AtomicBool>,
 }
 
-impl<T> Pool<T> where T: Send + Sync + 'static {
+impl<T> Pool<T>
+where
+    T: Send + Sync + 'static,
+{
     pub fn new(idle_timeout: Option<Duration>) -> Self {
         let resources = Arc::new(RwLock::new(HashMap::new()));
         let expire_worker_resources = Arc::clone(&resources);
-        let (expire_worker_finish, recv) = mpsc::channel();
+        let expire_worker_stop = Arc::new(AtomicBool::new(false));
         let idle_timeout = match idle_timeout {
             Some(timeout) => timeout,
             None => DEFAULT_IDLE_RESOURCE_TIMEOUT.clone(),
         };
+        let expire_worker_stop2 = Arc::clone(&expire_worker_stop);
         let expire_worker_handle = thread::spawn(move || {
-            Self::expire_connections(idle_timeout, expire_worker_resources, recv);
+            Self::expire_connections(idle_timeout, expire_worker_resources, expire_worker_stop2);
         });
+        let expire_worker_handle = Some(expire_worker_handle);
         Pool {
             resources,
             expire_worker_handle,
-            expire_worker_finish,
+            expire_worker_stop,
         }
     }
 
     fn expire_connections(
         idle_timeout: Duration,
         resources: Arc<RwLock<HashMap<String, PoolResource<T>>>>,
-        finish: mpsc::Receiver<()>,
+        stop: Arc<AtomicBool>,
     ) {
-        while let Err(err) = finish.try_recv() {
-            if let mpsc::TryRecvError::Disconnected = err {
-                break;
-            }
+        while !stop.load(Ordering::Acquire) {
             let mut resources = resources.write().unwrap();
             let now = Instant::now();
             let conns: Vec<(String, PoolResource<T>)> = resources.drain().collect();
@@ -70,7 +81,8 @@ impl<T> Pool<T> where T: Send + Sync + 'static {
                     resources.insert(addr, conn);
                 }
             }
-            thread::sleep(EXPIRE_RESOURCE_CYCLE_TIME);
+            println!("parking worker");
+            thread::park_timeout(EXPIRE_RESOURCE_CYCLE_TIME);
         }
     }
 
@@ -82,11 +94,7 @@ impl<T> Pool<T> where T: Send + Sync + 'static {
         }
     }
 
-    pub fn insert(
-        &self,
-        addr: &str,
-        connection: PoolResource<T>,
-    ) -> Option<()> {
+    pub fn insert(&self, addr: &str, connection: PoolResource<T>) -> Option<()> {
         let mut connections = self.resources.write().unwrap();
         match connections.len() {
             MAX_RESOURCES => None,
@@ -98,15 +106,43 @@ impl<T> Pool<T> where T: Send + Sync + 'static {
     }
 }
 
+impl<T> Drop for Pool<T>
+where
+    T: Send + Sync + 'static,
+{
+    fn drop(&mut self) {
+        let stop_worker = &self.expire_worker_stop;
+        stop_worker.store(true, Ordering::Release);
+        let handle = &mut self.expire_worker_handle;
+        let handle = handle.take().unwrap();
+        handle.thread().unpark();
+        handle.join().unwrap();
+    }
+}
+
+trait EnsureThreadShareable: Send + Sync {}
+
+impl EnsureThreadShareable for Pool<String> {}
+
 #[cfg(test)]
 mod test {
     use super::*;
     #[test]
     fn returns_resource() {
-       let pool: Pool<&str> = Pool::new(Some(Duration::from_secs(2)));
-       pool.insert("addr1", PoolResource::new("resource1"));
-       let mut pool_resource = pool.get("addr1").unwrap();
-       let resource = pool_resource.resource();
-       assert_eq!(resource, &"resource1")
+        let pool: Pool<&str> = Pool::new(Some(Duration::from_secs(2)));
+        pool.insert("addr1", PoolResource::new("resource1"));
+        let mut pool_resource = pool.get("addr1").unwrap();
+        let resource = pool_resource.resource();
+        assert_eq!(resource, &"resource1")
+    }
+
+    #[test]
+    fn stops_the_worker_when_dropped() {
+        let pool: Pool<&str> = Pool::new(Some(Duration::from_secs(2)));
+        let now = Instant::now();
+        // Give time for the expire worker thread to park itself.
+        thread::sleep(Duration::from_secs(3));
+        drop(pool);
+        assert!(now.elapsed() < DEFAULT_IDLE_RESOURCE_TIMEOUT)
     }
 }

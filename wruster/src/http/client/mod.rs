@@ -1,7 +1,7 @@
 use std::error;
 use std::net::TcpStream;
-use std::sync::{self, Mutex};
 use std::sync::Arc;
+use std::sync::{self, Mutex};
 use std::thread;
 
 use crate::http::*;
@@ -21,7 +21,6 @@ impl Client {
     }
 
     pub fn run(&self, request: Request) -> Response {
-        
         // let conn = self.connection_pool.get(&request.uri);
         Response::from_status(StatusCode::Continue)
     }
