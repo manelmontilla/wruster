@@ -4,8 +4,8 @@
 
 Wruster is a experimental web server.
 
-Even though it´s a fully functional web server is intended to experiment and no
-to be used in production.
+Even though it´s a fully functional web server it's intended to experiment and
+not to be used in production.
 
 ## Status
 
