@@ -14,15 +14,21 @@ pub mod headers;
 pub mod status;
 pub use self::status::StatusCode;
 
+mod version;
+pub use self::version::Version;
+
 use crate::errors::HttpError;
 use crate::errors::HttpError::{ConnectionClosed, Timeout, Unknown};
 
 use headers::*;
 
+/// Contains a HTTP client implementation.
+pub mod client;
+
 #[cfg(test)]
 mod tests;
 
-/// Defines the returned by the methods and functions of this module.
+/// Defines the results returned by the methods and functions of this module.
 pub type HttpResult<T> = Result<T, HttpError>;
 
 /// Represents a Http Request.
@@ -98,6 +104,38 @@ impl<'a> Request<'a> {
     pub fn read_from_str(from: &str) -> Result<Request<'_>, HttpError> {
         Request::read_from(Cursor::new(from))
     }
+
+    /// Converts an immutable reference to a value implementing the [``IntoRequest``] trait
+    /// to a Request.
+    pub fn from<T>(f: &'a T, mime_type: mime::Mime, method: HttpMethod, url: String) -> Self
+    where
+        T: IntoRequest<'a>,
+    {
+        IntoRequest::into(f, mime_type, method, url)
+    }
+}
+
+/// Converts an immutable reference to a Request given [``mime::Mime``] type, a
+/// [``HttpMethod``] and a url.
+pub trait IntoRequest<'a> {
+    /// Performs the conversion.
+    fn into(&'a self, mime_type: mime::Mime, method: HttpMethod, url: String) -> Request<'a>;
+}
+
+impl<'a, T> IntoRequest<'a> for &'a T
+where
+    &'a T: IntoBody<'a>,
+{
+    fn into(&'a self, mime_type: mime::Mime, method: HttpMethod, url: String) -> Request<'a> {
+        let body = IntoBody::into(self, mime_type);
+        Request {
+            body: Some(body),
+            headers: Headers::new(),
+            method: method,
+            uri: url,
+            version: Version::HTTP1_1.to_string(),
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -162,6 +200,27 @@ impl HttpRequestLine {
             version: String::from(version),
         })
     }
+
+    pub fn write<T: io::Write>(&mut self, to: &mut T) -> HttpResult<()> {
+        // let payload = format!("HTTP/1.1 {:#}\r\n", self.status);
+        // if let Err(err) = to.write(payload.as_bytes()) {
+        //     return Err(HttpError::Unknown(err.to_string()));
+        // };
+        // if self.body.is_none() {
+        //     self.headers.add(Header {
+        //         name: String::from("Content-Length"),
+        //         value: String::from("0"),
+        //     })
+        // }
+        // self.headers.write(to)?;
+        // if self.body.is_none() {
+        //     return Ok(());
+        // }
+        // // TODO: handle possible error.
+        // let body = self.body.as_mut().unwrap();
+        // body.write(to)
+        todo!()
+    }
 }
 
 /// Body holds the body part of an Http Message.
@@ -201,7 +260,7 @@ impl<'a> Body<'a> {
     This function will return an error if there is any error writing
     to the ``to`` paramerer.
     */
-    pub fn write<T: io::Write>(&mut self, to: &mut T) ->  HttpResult<()> {
+    pub fn write<T: io::Write>(&mut self, to: &mut T) -> HttpResult<()> {
         let src = &mut self.content;
         if let Err(err) = io::copy(src, to) {
             return Err(HttpError::Unknown(err.to_string()));
@@ -293,6 +352,20 @@ impl<'a> Body<'a> {
         };
         Ok(Some(body))
     }
+
+    /**
+    Creates a Body from value of a type implementing the trait [`IntoBody`]
+
+    # Examples
+
+    TODO
+    */
+    pub fn from<T>(f: &'a T, mime_type: mime::Mime) -> Self
+    where
+        T: IntoBody<'a>,
+    {
+        IntoBody::into(f, mime_type)
+    }
 }
 
 impl fmt::Debug for Body<'_> {
@@ -302,6 +375,26 @@ impl fmt::Debug for Body<'_> {
             "content-type: {:?}, content-length: {}, content: ....",
             self.content_type, self.content_length
         )
+    }
+}
+
+/// Used to convert an immutable reference to a Body.
+///
+/// # Examples
+///
+///  TODO
+pub trait IntoBody<'a> {
+    /// Performs the conversion.
+    fn into(&'a self, mime_type: mime::Mime) -> Body<'a>;
+}
+
+impl<'a> IntoBody<'a> for &'a str {
+    fn into(&'a self, mime_type: mime::Mime) -> Body<'a> {
+        Body {
+            content_length: self.len() as u64,
+            content_type: Some(mime_type),
+            content: Box::new(Cursor::new(self)),
+        }
     }
 }
 
@@ -357,7 +450,7 @@ impl<'a> Response<'a> {
     pub fn write<T: io::Write>(&mut self, to: &mut T) -> HttpResult<()> {
         let payload = format!("HTTP/1.1 {:#}\r\n", self.status);
         if let Err(err) = to.write(payload.as_bytes()) {
-           return Err(HttpError::Unknown(err.to_string()));
+            return Err(HttpError::Unknown(err.to_string()));
         };
         if self.body.is_none() {
             self.headers.add(Header {
@@ -373,7 +466,6 @@ impl<'a> Response<'a> {
         let body = self.body.as_mut().unwrap();
         body.write(to)
     }
-
 
     /// Creates a Request with the given http [``StatusCode``].
     ///

@@ -43,6 +43,7 @@ fn main() {
 ```
 */
 
+use std::error::Error as StdError;
 use std::io::{Error, ErrorKind};
 use std::net::{SocketAddr, TcpStream};
 use std::path::PathBuf;
@@ -51,7 +52,6 @@ use std::sync::Arc;
 use std::thread::JoinHandle;
 use std::{io::Write, time};
 use std::{net, thread};
-use std::error::Error as StdError;
 
 #[macro_use]
 extern crate log;
@@ -78,7 +78,6 @@ pub const DEFAULT_READ_REQUEST_TIMEOUT: time::Duration = time::Duration::from_se
 /// Defines the default max time for a response to be written
 pub const DEFAULT_WRITE_RESPONSE_TIMEOUT: time::Duration = time::Duration::from_secs(60);
 
-
 /// Defines the result type returned from the [``Server``] methods.
 pub type ServerResult = Result<(), Box<dyn StdError>>;
 
@@ -91,7 +90,7 @@ pub struct Timeouts {
     pub write_response_timeout: time::Duration,
 }
 
-/// Represents a web server that can be run passing a [`router::Router`].
+/// Represents a web server that can be run by passing a [`router::Router`].
 pub struct Server {
     stop: Arc<AtomicBool>,
     addr: Option<String>,
@@ -248,7 +247,7 @@ impl Server {
                 };
 
                 if pool.run(Box::new(action)).is_err() {
-                    error!("server to busy to handle connection with: {}", src_addr);
+                    error!("server too busy to handle connection with: {}", src_addr);
                     handle_busy(stream, timeouts.clone(), src_addr);
                 }
             }

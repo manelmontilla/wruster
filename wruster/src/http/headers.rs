@@ -6,8 +6,8 @@ use std::io::prelude::*;
 
 use super::errors::HttpError::Unknown;
 use super::errors::*;
-use super::MessageChar;
 use super::HttpResult;
+use super::MessageChar;
 
 #[derive(Debug)]
 /// Holds a collection of HTTP headers.
@@ -16,7 +16,6 @@ pub struct Headers {
 }
 
 impl Headers {
-
     /**
     Creates a new [`Headers`] struct.
 
@@ -183,7 +182,7 @@ impl Headers {
 
         let written = to.write_all("\r\n".as_bytes());
         if let Err(err) = written {
-             return Err(HttpError::Unknown(err.to_string()));
+            return Err(HttpError::Unknown(err.to_string()));
         };
         Ok(())
     }
@@ -195,7 +194,7 @@ impl Default for Headers {
     }
 }
 
- /// Represents an HTTP header.
+/// Represents an HTTP header.
 #[derive(Debug)]
 pub struct Header {
     /// The name of the header.
@@ -362,15 +361,15 @@ impl Header {
         };
         written = to.write_all(": ".as_bytes());
         if let Err(err) = written {
-             return Err(HttpError::Unknown(err.to_string()));
+            return Err(HttpError::Unknown(err.to_string()));
         };
         written = to.write_all(self.value.as_bytes());
         if let Err(err) = written {
-             return Err(HttpError::Unknown(err.to_string()));
+            return Err(HttpError::Unknown(err.to_string()));
         };
         written = to.write_all("\r\n".as_bytes());
         if let Err(err) = written {
-             return Err(HttpError::Unknown(err.to_string()));
+            return Err(HttpError::Unknown(err.to_string()));
         };
         Ok(())
     }

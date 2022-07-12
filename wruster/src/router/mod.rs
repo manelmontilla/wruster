@@ -32,13 +32,13 @@ impl Router {
             routes: AtomicRefCell::new(Trie::new()),
         }
     }
-    
-    /// Adds a route; a route consists on path, and Http verb and a handler
+
+    /// Adds a route; a route consists on a path, a Http verb and a handler
     /// that will attend the requests for that path and Http Verb. Note that
     /// the router will select the most concrete handler that is, at least,
-    /// registered for a path that is parent of a request path. For instance:
-    /// if a handler has been registered for the GET's in path "/a", a GET
-    /// request to a the path "/a/b" the will be attended with that Handler.
+    /// registered for a path that is parent of the request path. For instance:
+    /// if a handler has been registered for GET's in the path "/a", a GET
+    /// request to the path "/a/b" the will be attended with that Handler.
     ///
     /// # Examples
     /// TODO
@@ -103,7 +103,6 @@ impl MethodHandlers {
             .map(|action| Arc::clone(action))
     }
 }
-
 
 pub(crate) trait Normalize
 where

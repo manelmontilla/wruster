@@ -9,10 +9,10 @@ pub enum HttpError {
     /// parsing a Request or a Response, more info about the error is stores
     /// in the inner String of the variant.
     Unknown(String),
-    /// It is generated when the connection is closed while waiting to star
+    /// It's generated when the connection is closed while waiting to star
     /// reading a request.
     ConnectionClosed,
-    /// It is generated when the maximun allowed time to read a request, or
+    /// It's generated when the maximun allowed time to read a request or
     /// write a response has been exceed.
     Timeout,
 }
@@ -21,7 +21,7 @@ impl fmt::Display for HttpError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Unknown(msg) => write!(f, "{}", msg),
-            Self::ConnectionClosed => write!(f, "Connection Closed"),
+            Self::ConnectionClosed => write!(f, "connection closed"),
             Self::Timeout => write!(f, "operation timeout"),
         }
     }
