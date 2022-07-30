@@ -29,7 +29,7 @@ impl<T> TimeoutStream<T>
 where
     T: io::Read + io::Write + Timeout,
 {
-    pub fn from(
+    pub fn from<'a>(
         from: T,
         read_timeout: Option<Duration>,
         write_timeout: Option<Duration>,
