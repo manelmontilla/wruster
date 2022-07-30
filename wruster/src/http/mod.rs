@@ -1,4 +1,4 @@
-use std::io::{self, BufReader};
+use std::io;
 use std::io::{prelude::*, Cursor};
 
 use std::convert::Infallible;
@@ -301,11 +301,11 @@ impl Body {
     use wruster::http::Body;
 
     let content = "content";
-    let mut body = Body {
-        content: Box::new(Cursor::new(content)),
-        content_type: Some(mime::TEXT_PLAIN),
-        content_length: content.len() as u64,
-    };
+    let mut body = Body::new(
+        Some(mime::TEXT_PLAIN),
+        content.len() as u64,
+        Box::new(Cursor::new(content))
+    );
     let mut to: Vec<u8> = Vec::new();
     body.write(&mut to).unwrap();
     let got_content = String::from_utf8(to).unwrap();
@@ -524,12 +524,12 @@ impl Response {
     use wruster::http::headers::{Header, Headers};
     use wruster::http::{Body, Response, StatusCode};
 
-       let content = "#wruster";
-    let body = Body {
-    content: Box::new(Cursor::new(content)),
-    content_type: Some(mime::TEXT_PLAIN),
-    content_length: content.len() as u64,
-    };
+    let content = "#wruster";
+    let body = Body::new(
+        Some(mime::TEXT_PLAIN),
+        content.len() as u64,
+        Box::new(Cursor::new(content))
+    );
 
     let mut headers = Headers::new();
     headers.add(Header {
