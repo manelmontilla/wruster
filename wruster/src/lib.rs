@@ -43,6 +43,7 @@ fn main() {
 ```
 */
 
+use std::borrow::BorrowMut;
 use std::error::Error as StdError;
 use std::io::{Error, ErrorKind};
 use std::net::{SocketAddr, TcpStream};
@@ -90,7 +91,7 @@ pub struct Timeouts {
     pub write_response_timeout: time::Duration,
 }
 
-/// Represents a web server that can be run passing a [`router::Router`].
+/// Represents a web server that can be run by passing a [`router::Router`].
 pub struct Server {
     stop: Arc<AtomicBool>,
     addr: Option<String>,
@@ -247,7 +248,7 @@ impl Server {
                 };
 
                 if pool.run(Box::new(action)).is_err() {
-                    error!("server to busy to handle connection with: {}", src_addr);
+                    error!("server too busy to handle connection with: {}", src_addr);
                     handle_busy(stream, timeouts.clone(), src_addr);
                 }
             }
@@ -360,12 +361,19 @@ fn handle_busy(mut stream: net::TcpStream, timeouts: Timeouts, src_addr: SocketA
     debug!("sending too busy to {}", src_addr);
     let write_timeout = Some(timeouts.write_response_timeout);
     let read_timeout = Some(timeouts.read_request_timeout);
-    let mut timeout_stream = TimeoutStream::from(&mut stream, read_timeout, write_timeout);
+    let shutdown_stream = match stream.try_clone() {
+        Ok(stream) => stream,
+        Err(err) => {
+            error!("error cloning stream: {}", err);
+            return;
+        }
+    };
+    let mut timeout_stream = TimeoutStream::from(stream, read_timeout, write_timeout);
     let mut resp = Response::from_status(StatusCode::ServiceUnavailable);
     if let Err(err) = resp.write(&mut timeout_stream) {
         error!("sending too busy to {}: {}", src_addr, err.to_string())
     }
-    if let Err(err) = stream.shutdown(net::Shutdown::Both) {
+    if let Err(err) = shutdown_stream.shutdown(net::Shutdown::Both) {
         error!("error closing connection with: {}, {}", src_addr, err);
     }
     debug!("connection with closed")
@@ -378,12 +386,21 @@ fn handle_conversation(
     source_addr: SocketAddr,
 ) {
     debug!("handling conversation with {}", source_addr);
-    while handle_connection(
-        &mut stream,
-        Arc::clone(&routes),
-        source_addr,
-        timeouts.clone(),
-    ) {
+    let mut handled = false;
+    while !handled {
+        let handle_stream = match stream.try_clone() {
+            Ok(stream) => stream,
+            Err(err) => {
+                error!("error cloning stream {}", err);
+                return;
+            }
+        };
+        handled = handle_connection(
+            handle_stream,
+            Arc::clone(&routes),
+            source_addr,
+            timeouts.clone(),
+        );
         if let Err(err) = stream.flush() {
             error!("error flushing to: {}, {}", source_addr, err);
             return;
@@ -397,7 +414,7 @@ fn handle_conversation(
 }
 
 fn handle_connection(
-    stream: &mut TcpStream,
+    stream: TcpStream,
     routes: Arc<Router>,
     source_addr: SocketAddr,
     timeouts: Timeouts,
@@ -406,7 +423,7 @@ fn handle_connection(
     let read_timeout = Some(timeouts.read_request_timeout);
     let write_timeout = Some(timeouts.write_response_timeout);
 
-    let mut resp_stream = match stream.try_clone() {
+    let resp_stream = match stream.try_clone() {
         Ok(stream) => stream,
         Err(err) => {
             error!("error cloning stream: {}", err.to_string());
@@ -414,24 +431,38 @@ fn handle_connection(
         }
     };
 
-    let mut timeout_stream = TimeoutStream::from(stream, read_timeout, write_timeout);
-    let mut response = match Request::read_from(&mut timeout_stream) {
-        Ok(request) => {
-            connection_open = connection_persistent(&request);
-            run_action(request, routes)
+    let timeout_stream = TimeoutStream::from(stream, read_timeout, write_timeout);
+    let (request, mut response) = match Request::read_from(timeout_stream) {
+        Ok(mut request) => {
+            connection_open = is_connection_alive(&request);
+            let response = run_action(&mut request, routes);
+            (Some(request), response)
         }
         Err(err) => match err {
             errors::HttpError::Unknown(err) => {
                 error!("error reading request, error info: {}", err);
                 connection_open = false;
-                Response::from_status(StatusCode::BadRequest)
+                let response = Response::from_status(StatusCode::BadRequest);
+                (None, response)
             }
             errors::HttpError::Timeout => return false,
             errors::HttpError::ConnectionClosed => return false,
         },
     };
 
-    let mut timeout_stream = TimeoutStream::from(&mut resp_stream, read_timeout, write_timeout);
+    // Ensure the request body (if any) is read.
+    if let Some(mut request) = request {
+        let body = request.body.as_mut();
+        if let Some(body) = body {
+            if let Err(err) = body.ensure_read() {
+                error!("error reading request body, error info: {}", err);
+                return false;
+            }
+        }
+    }
+
+    // Write the response.
+    let mut timeout_stream = TimeoutStream::from(resp_stream, read_timeout, write_timeout);
     if let Err(err) = response.write(&mut timeout_stream) {
         error!(
             "error writing response to: {}, error info: {}",
@@ -442,8 +473,8 @@ fn handle_connection(
     connection_open
 }
 
-fn run_action(mut request: Request<'_>, routes: Arc<Router>) -> Response<'_> {
-    let req_path = PathBuf::from(request.uri);
+fn run_action(request: &mut Request, routes: Arc<Router>) -> Response {
+    let req_path = PathBuf::from(request.uri.clone());
     let normalized = match req_path.normalize() {
         Ok(path) => path,
         Err(err) => {

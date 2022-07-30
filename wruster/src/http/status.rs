@@ -2,6 +2,7 @@ use std::convert::From;
 use std::fmt;
 
 #[allow(missing_docs)]
+
 /// Contains a variant for each defined status code according to
 /// the spec in: https://datatracker.ietf.org/doc/html/rfc7231#section-6.1.
 #[derive(Debug, PartialEq, Eq)]
@@ -51,7 +52,6 @@ pub enum StatusCode {
 }
 
 impl StatusCode {
-    
     /**
     Given a status code returns a string containing the reason associated to it.
 
@@ -212,5 +212,59 @@ impl fmt::Display for StatusCode {
         let code: usize = self.into();
         // Status-Code SP Reason-Phrase https://www.w3.org/Protocols/rfc2616/rfc2616-sec6.html
         write!(f, "{} {}", code, self.reason())
+    }
+}
+
+impl From<StatusCode> for String {
+    fn from(code: StatusCode) -> Self {
+        code.to_string()
+    }
+}
+
+impl Clone for StatusCode {
+    fn clone(&self) -> Self {
+        match self {
+            Self::Continue => Self::Continue,
+            Self::SwitchingProtocols => Self::SwitchingProtocols,
+            Self::OK => Self::OK,
+            Self::Created => Self::Created,
+            Self::Accepted => Self::Accepted,
+            Self::NonAuthoritativeInformation => Self::NonAuthoritativeInformation,
+            Self::NoContent => Self::NoContent,
+            Self::ResetContent => Self::ResetContent,
+            Self::PartialContent => Self::PartialContent,
+            Self::MultipleChoices => Self::MultipleChoices,
+            Self::MovedPermanently => Self::MovedPermanently,
+            Self::Found => Self::Found,
+            Self::SeeOther => Self::SeeOther,
+            Self::NotModified => Self::NotModified,
+            Self::UseProxy => Self::UseProxy,
+            Self::TemporaryRedirect => Self::TemporaryRedirect,
+            Self::BadRequest => Self::BadRequest,
+            Self::Unauthorized => Self::Unauthorized,
+            Self::PaymentRequired => Self::PaymentRequired,
+            Self::Forbidden => Self::Forbidden,
+            Self::NotFound => Self::NotFound,
+            Self::MethodNotAllowed => Self::MethodNotAllowed,
+            Self::NotAcceptable => Self::NotAcceptable,
+            Self::ProxyAuthenticationRequired => Self::ProxyAuthenticationRequired,
+            Self::RequestTimeOut => Self::RequestTimeOut,
+            Self::Conflict => Self::Conflict,
+            Self::Gone => Self::Gone,
+            Self::LengthRequired => Self::LengthRequired,
+            Self::PreconditionFailed => Self::PreconditionFailed,
+            Self::RequestEntityTooLarge => Self::RequestEntityTooLarge,
+            Self::RequestURITooLarge => Self::RequestURITooLarge,
+            Self::UnsupportedMediaType => Self::UnsupportedMediaType,
+            Self::RequestedRangeNotSatisfiable => Self::RequestedRangeNotSatisfiable,
+            Self::ExpectationFailed => Self::ExpectationFailed,
+            Self::InternalServerError => Self::InternalServerError,
+            Self::NotImplemented => Self::NotImplemented,
+            Self::BadGateway => Self::BadGateway,
+            Self::ServiceUnavailable => Self::ServiceUnavailable,
+            Self::GatewayTimeOut => Self::GatewayTimeOut,
+            Self::HTTPVersionNotSupported => Self::HTTPVersionNotSupported,
+            Self::ExtensionCode(code) => Self::ExtensionCode(code.clone()),
+        }
     }
 }

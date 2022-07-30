@@ -17,20 +17,20 @@ impl Timeout for TcpStream {
     }
 }
 
-pub struct TimeoutStream<'a, T: io::Read + io::Write + Timeout> {
-    stream: &'a mut T,
+pub struct TimeoutStream<T: io::Read + io::Write + Timeout> {
+    stream: T,
     read: Option<Duration>,
     write: Option<Duration>,
     ongoing_read: Option<Operation>,
     ongoing_write: Option<Operation>,
 }
 
-impl<'a, T> TimeoutStream<'a, T>
+impl<T> TimeoutStream<T>
 where
     T: io::Read + io::Write + Timeout,
 {
     pub fn from(
-        from: &mut T,
+        from: T,
         read_timeout: Option<Duration>,
         write_timeout: Option<Duration>,
     ) -> TimeoutStream<T> {
@@ -44,7 +44,7 @@ where
     }
 }
 
-impl<'a, T> io::Read for TimeoutStream<'a, T>
+impl<T> io::Read for TimeoutStream<T>
 where
     T: io::Read + io::Write + Timeout,
 {
@@ -68,7 +68,8 @@ where
         if next_timeout.as_secs() == 0 {
             return Err(io::Error::new(io::ErrorKind::WouldBlock, "time out"));
         }
-        if let Err(err) = self.stream.set_read_timeout(Some(next_timeout)) {
+        let stream = &self.stream;
+        if let Err(err) = stream.set_read_timeout(Some(next_timeout)) {
             return io::Result::Err(err);
         }
         read.start();
@@ -78,7 +79,7 @@ where
     }
 }
 
-impl<'a, T> io::Write for TimeoutStream<'a, T>
+impl<T> io::Write for TimeoutStream<T>
 where
     T: io::Read + io::Write + Timeout,
 {
@@ -172,7 +173,8 @@ mod tests {
         let expected_timeout = read_timeout.clone();
         let handle = thread::spawn(move || {
             let (mut stream, _) = listener.accept().unwrap();
-            let mut tstream = TimeoutStream::from(&mut stream, Some(read_timeout), None);
+            let stream1 = stream.try_clone().unwrap();
+            let mut tstream = TimeoutStream::from(stream1, Some(read_timeout), None);
             let mut reader = BufReader::new(&mut tstream);
             let mut content = Vec::new();
             reader.read_until(b' ', &mut content).unwrap();

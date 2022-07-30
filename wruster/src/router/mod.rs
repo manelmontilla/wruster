@@ -8,7 +8,7 @@ use crate::http::{HttpMethod, Request, Response};
 use trie::Trie;
 
 /// Defines a type alias for the Http Handlers associated to a [``Router`].
-pub type HttpHandler = Box<dyn Fn(Request) -> Response + Send + Sync>;
+pub type HttpHandler = Box<dyn Fn(&mut Request) -> Response + Send + Sync>;
 
 /// Router holds the Handlers that will attend a set of the http routes and methods.
 pub struct Router {
@@ -32,13 +32,13 @@ impl Router {
             routes: AtomicRefCell::new(Trie::new()),
         }
     }
-    
-    /// Adds a route; a route consists on path, and Http verb and a handler
+
+    /// Adds a route; a route consists on a path, a Http verb and a handler
     /// that will attend the requests for that path and Http Verb. Note that
     /// the router will select the most concrete handler that is, at least,
-    /// registered for a path that is parent of a request path. For instance:
-    /// if a handler has been registered for the GET's in path "/a", a GET
-    /// request to a the path "/a/b" the will be attended with that Handler.
+    /// registered for a path that is parent of the request path. For instance:
+    /// if a handler has been registered for GET's in the path "/a", a GET
+    /// request to the path "/a/b" the will be attended with that Handler.
     ///
     /// # Examples
     /// TODO
@@ -103,7 +103,6 @@ impl MethodHandlers {
             .map(|action| Arc::clone(action))
     }
 }
-
 
 pub(crate) trait Normalize
 where
@@ -179,31 +178,34 @@ mod tests {
     #[test]
     fn routes_add_and_get() {
         let routes = Router::new();
-        let action: Box<dyn Fn(Request) -> Response + Sync + Send> = Box::new(|req: Request| {
-            let mut content = String::new();
-            req.body
-                .unwrap()
-                .content
-                .read_to_string(&mut content)
-                .unwrap();
-            Response::from_str(&content).unwrap()
-        });
+        let action: Box<dyn Fn(&mut Request) -> Response + Sync + Send> =
+            Box::new(|req: &mut Request| {
+                let mut content = String::new();
+                req.body
+                    .as_mut()
+                    .unwrap()
+                    .content
+                    .read_to_string(&mut content)
+                    .unwrap();
+                Response::from_str(&content).unwrap()
+            });
         routes.add("/a/b", HttpMethod::GET, action);
         let action = routes.get("/a/b", HttpMethod::GET);
         let action = action.unwrap();
         let content = "content";
-        let request = Request {
-            body: Some(Body {
-                content: Box::new(Cursor::new(content)),
-                content_type: Some(mime::TEXT_PLAIN),
-                content_length: content.len() as u64,
-            }),
+        let body = Body::new(
+            Some(mime::TEXT_PLAIN),
+            content.len() as u64,
+            Box::new(Cursor::new(content)),
+        );
+        let mut request = Request {
+            body: Some(body),
             method: HttpMethod::POST,
             uri: String::from("/"),
             version: String::from("HTTP/1.1"),
             headers: Headers::new(),
         };
-        let resp = action(request);
+        let resp = action(&mut request);
         let mut resp_body = resp.body.unwrap();
         let mut content = Vec::<u8>::new();
         resp_body.write(&mut content).unwrap();

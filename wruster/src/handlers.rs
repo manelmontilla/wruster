@@ -28,7 +28,7 @@ server.run(addr, routes).unwrap();
 server.wait().unwrap();
 ```
 */
-pub fn serve_static(dir: &str, request: &Request) -> Response<'static> {
+pub fn serve_static(dir: &str, request: &Request) -> Response {
     let base_path: PathBuf = PathBuf::from(dir).canonicalize().unwrap();
     let mut uri = request.uri.as_str();
     if uri.starts_with('/') {
@@ -61,7 +61,7 @@ pub fn serve_static(dir: &str, request: &Request) -> Response<'static> {
     };
     let mime_type = mime_guess::from_path(path).first_or_octet_stream();
     let mut headers = Headers::new();
-    let body = Box::new(BufReader::new(content));
+    let content = Box::new(BufReader::new(content));
     headers.add(Header {
         name: String::from("Content-Length"),
         value: metadata.len().to_string(),
@@ -70,14 +70,11 @@ pub fn serve_static(dir: &str, request: &Request) -> Response<'static> {
         name: String::from("Content-Type"),
         value: mime_type.to_string(),
     });
+    let body = Body::new(Some(mime_type), metadata.len(), content);
     Response {
         status: StatusCode::OK,
         headers,
-        body: Some(Body {
-            content_length: metadata.len(),
-            content_type: Some(mime_type),
-            content: body,
-        }),
+        body: Some(body),
     }
 }
 
@@ -110,7 +107,7 @@ server.wait().unwrap();
 ```
 */
 pub fn log_middleware(handler: HttpHandler) -> HttpHandler {
-    Box::new(move |request: Request| {
+    Box::new(move |request: &mut Request| {
         info!("request {:?}", request);
         let response = handler(request);
         info!("response {:?}", response);
