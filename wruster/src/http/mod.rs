@@ -105,7 +105,7 @@ impl Request {
         Request::read_from(Cursor::new(from.to_string()))
     }
 
-    /// Converts an immutable reference to a value implementing the [``IntoRequest``] trait
+    /// Converts a value implementing the [``IntoRequest``] trait
     /// to a Request.
     pub fn from<T>(f: T, mime_type: mime::Mime, method: HttpMethod, url: String) -> Self
     where
@@ -146,6 +146,32 @@ impl Request {
         // TODO: handle possible error.
         let body = self.body.as_mut().unwrap();
         body.write(to)
+    }
+
+    /**
+    Creates a [``Resquest``] from a given body, method and path.
+
+    # Examples
+
+    TODO
+
+    # Errors
+    */
+    pub fn from_body(body: Body, method: HttpMethod, path: &str) -> Self {
+        let mut headers = Headers::new();
+        if let Some(content_type) = body.content_type.clone() {
+            headers.add(Header {
+                name: "Content-Type".to_string(),
+                value: content_type.to_string(),
+            })
+        }
+        Request {
+            body: Some(body),
+            headers: Headers::new(),
+            method: method,
+            uri: path.to_string(),
+            version: Version::HTTP1_1.to_string(),
+        }
     }
 }
 

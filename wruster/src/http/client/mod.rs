@@ -1,17 +1,21 @@
 use crate::http::*;
+use std::net::SocketAddr;
 use std::net::TcpStream;
+use std::net::ToSocketAddrs;
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::ops::Deref;
 use std::ops::DerefMut;
 use std::sync::Mutex;
 use std::sync::{Arc, Weak};
-use std::thread;
 use std::time;
-use url::Url;
-
-mod connection_pool;
 
 use crate::timeout_stream::TimeoutStream;
 use connection_pool::{Pool, PoolResource};
+
+mod connection_pool;
+
+#[cfg(test)]
+mod tests;
 
 /// Defines the default max time for a response to be read.
 pub const DEFAULT_READ_RESPONSE_TIMEOUT: time::Duration = time::Duration::from_secs(60);
@@ -63,34 +67,23 @@ impl<'a> Client {
         Self { connection_pool }
     }
 
-    pub fn run(&'a self, request: Request) -> Result<ClientResponse, HttpError> {
+    pub fn run(
+        &'a self,
+        hostname: String,
+        port: u16,
+        request: Request,
+    ) -> Result<ClientResponse, HttpError> {
         let pool = self.connection_pool.lock().unwrap();
-        let url = match url::Url::parse(&request.uri) {
-            Ok(url) => url,
-            Err(err) => return Err(HttpError::Unknown(err.to_string())),
-        };
-        let host = match url.host_str() {
-            None => return Err(HttpError::Unknown("invalid hostname".to_string())),
-            Some(host) => host,
-        };
-        let port = match url.port_or_known_default() {
-            None => return Err(HttpError::Unknown("unknown port".to_string())),
-            Some(port) => port.to_string(),
-        };
-        let addr = format!("{}:{}", host, port);
+        let addr = format!("{}:{}", hostname, port);
         let conn = match pool.get(&addr) {
             Some(conn) => conn.resource(),
-            None => Self::connect(url).map(|stream| Arc::new(stream))?,
+            None => Self::connect(hostname, port).map(|stream| Arc::new(stream))?,
         };
         let read_timeout = DEFAULT_READ_RESPONSE_TIMEOUT;
         let write_timeout = DEFAULT_WRITE_REQUEST_TIMEOUT;
 
-        let conn = conn
-            .try_clone()
-            .map_err(|err| HttpError::Unknown(err.to_string()))?;
-        let response_conn = conn
-            .try_clone()
-            .map_err(|err| HttpError::Unknown(err.to_string()))?;
+        let conn = conn.try_clone().map_err(HttpError::from)?;
+        let response_conn = conn.try_clone().map_err(HttpError::from)?;
         let mut stream = TimeoutStream::from(conn, Some(read_timeout), Some(write_timeout));
         if let Err(err) = request.write(&mut stream) {
             return Err(err);
@@ -112,45 +105,11 @@ impl<'a> Client {
         Ok(response)
     }
 
-    fn connect(uri: url::Url) -> Result<TcpStream, HttpError> {
-        let addrs = match uri.socket_addrs(|| None) {
-            Ok(addrs) => addrs,
-            Err(err) => return Err(HttpError::Unknown(err.to_string())),
-        };
-        let addr = &*addrs;
-        match TcpStream::connect(addr) {
-            Ok(tcp_stream) => Ok(tcp_stream),
-            Err(err) => Err(HttpError::Unknown(err.to_string())),
-        }
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use std::sync::{Arc, Mutex};
-
-    use super::*;
-
-    //    #[test]
-    //   fn  do_a_request() {
-    //     let c = Client::new();
-    //     let r = Request::read_from_str("GET / HTTP/1.1\r\n\r\n").unwrap();
-    //     c.run(r);
-    //   }
-
-    #[test]
-    fn build_request_from_str() {
-        let c = Arc::new(Client::new());
-        let mut c2 = Arc::clone(&c);
-        let handle = thread::spawn(move || {
-            let c = &mut c2;
-            let r = Request::read_from_str("GET / HTTP/1.1\r\n\r\n").unwrap();
-            let mut resp = c.run(r).unwrap();
-            let mut v: Vec<u8> = Vec::new();
-            resp.write(&mut v).unwrap();
-            let s = String::from_utf8(v).unwrap();
-            println!("response {}", s);
-        });
-        handle.join().unwrap();
+    fn connect(hostname: String, port: u16) -> Result<TcpStream, HttpError> {
+        let addrs = (hostname, port)
+            .to_socket_addrs()
+            .map_err(HttpError::from)?;
+        let addrs = addrs.collect::<Vec<SocketAddr>>();
+        TcpStream::connect(&*addrs).map_err(HttpError::from)
     }
 }

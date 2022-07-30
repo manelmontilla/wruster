@@ -1,6 +1,6 @@
 use std::error::Error;
-use std::fmt;
 use std::fmt::Debug;
+use std::{fmt, io};
 
 #[derive(Debug, PartialEq)]
 /// Defines the possible errors generated when reading and parsing a Request or a Response.
@@ -28,3 +28,9 @@ impl fmt::Display for HttpError {
 }
 
 impl Error for HttpError {}
+
+impl From<io::Error> for HttpError {
+    fn from(err: io::Error) -> Self {
+        HttpError::Unknown(err.to_string())
+    }
+}
