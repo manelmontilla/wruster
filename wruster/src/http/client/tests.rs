@@ -16,9 +16,6 @@ use crate::*;
 
 #[test]
 fn do_a_request() {
-    // let c = Client::new();
-    // let r = Request::read_from_str("GET / HTTP/1.1\r\n\r\n").unwrap();
-    // c.run(r);
     let handler: HttpHandler = Box::new(move |request| {
         let mut content: Vec<u8> = Vec::new();
         request
@@ -37,9 +34,12 @@ fn do_a_request() {
         }
     });
     let (server, addr) = run_server(handler, HttpMethod::POST, "/");
-    // let r = Request::read_from_str("GET / HTTP/1.1\r\n\r\n").unwrap();
     let body = Body::from("test", mime::TEXT_PLAIN);
     let request = Request::from_body(body, HttpMethod::POST, "/");
+    let c = Client::new();
+    let response = c.run(&addr, request).expect("Error running request");
+    server.shutdown().expect("Error shuting down server");
+    assert_eq!(response.status, http::StatusCode::OK)
 }
 
 fn run_server(handler: HttpHandler, method: HttpMethod, path: &str) -> (Server, String) {
