@@ -7,7 +7,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 const DEFAULT_IDLE_RESOURCE_TIMEOUT: Duration = Duration::from_secs(30);
-const EXPIRE_RESOURCE_CYCLE_TIME: Duration = Duration::from_secs(30);
+const EXPIRE_RESOURCE_CYCLE_TIME: Duration = Duration::from_secs(15);
 const MAX_RESOURCES: usize = 100;
 
 pub struct PoolResource<T>
@@ -101,6 +101,7 @@ where
                     resources.insert(addr, conn);
                 }
             }
+            drop(resources);
             thread::park_timeout(EXPIRE_RESOURCE_CYCLE_TIME);
         }
     }
@@ -177,7 +178,7 @@ mod test {
     fn returns_resource() {
         let pool: Pool<&str> = Pool::new(Some(Duration::from_secs(2)));
         pool.insert("addr1", PoolResource::new("resource1"));
-        let mut pool_resource = pool.get("addr1").unwrap();
+        let pool_resource = pool.get("addr1").unwrap();
         let resource = &*pool_resource.resource();
         assert_eq!(resource, "resource1")
     }
