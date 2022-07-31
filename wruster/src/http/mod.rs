@@ -445,11 +445,10 @@ impl Body {
         if self.bytes_read == self.content_length {
             return Ok(());
         }
-        let mut buf = Vec::new();
         let n = self.content_length - self.bytes_read;
-        match self.take(n).read_to_end(&mut buf) {
+        match io::copy(&mut self.content.by_ref().take(n), &mut io::sink()) {
             Ok(_) => Ok(()),
-            Err(err) => Err(HttpError::Unknown(err.to_string())),
+            Err(err) => Err(HttpError::from(err)),
         }
     }
 
