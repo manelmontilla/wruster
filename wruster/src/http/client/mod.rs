@@ -67,17 +67,12 @@ impl<'a> Client {
         Self { connection_pool }
     }
 
-    pub fn run(
-        &'a self,
-        hostname: String,
-        port: u16,
-        request: Request,
-    ) -> Result<ClientResponse, HttpError> {
+    pub fn run(&'a self, addr: &str, request: Request) -> Result<ClientResponse, HttpError> {
         let pool = self.connection_pool.lock().unwrap();
-        let addr = format!("{}:{}", hostname, port);
-        let conn = match pool.get(&addr) {
+
+        let conn = match pool.get(addr) {
             Some(conn) => conn.resource(),
-            None => Self::connect(hostname, port).map(|stream| Arc::new(stream))?,
+            None => Self::connect(addr).map(|stream| Arc::new(stream))?,
         };
         let read_timeout = DEFAULT_READ_RESPONSE_TIMEOUT;
         let write_timeout = DEFAULT_WRITE_REQUEST_TIMEOUT;
@@ -88,7 +83,7 @@ impl<'a> Client {
         if let Err(err) = request.write(&mut stream) {
             return Err(err);
         };
-
+        stream.flush().map_err(HttpError::from)?;
         let stream = Box::new(stream);
         let response = match Response::read_from(stream) {
             Ok(response) => response,
@@ -100,15 +95,13 @@ impl<'a> Client {
             response: response,
             conn: response_conn,
             pool: Arc::downgrade(&response_pool),
-            addr: addr.clone(),
+            addr: addr.to_string(),
         };
         Ok(response)
     }
 
-    fn connect(hostname: String, port: u16) -> Result<TcpStream, HttpError> {
-        let addrs = (hostname, port)
-            .to_socket_addrs()
-            .map_err(HttpError::from)?;
+    fn connect(addr: &str) -> Result<TcpStream, HttpError> {
+        let addrs = addr.to_socket_addrs().map_err(HttpError::from)?;
         let addrs = addrs.collect::<Vec<SocketAddr>>();
         TcpStream::connect(&*addrs).map_err(HttpError::from)
     }
