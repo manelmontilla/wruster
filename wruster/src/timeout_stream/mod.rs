@@ -113,7 +113,7 @@ where
     }
 
     fn flush(&mut self) -> io::Result<()> {
-        todo!()
+        self.stream.flush()
     }
 }
 
