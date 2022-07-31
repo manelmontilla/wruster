@@ -163,11 +163,17 @@ impl Request {
             headers.add(Header {
                 name: "Content-Type".to_string(),
                 value: content_type.to_string(),
-            })
+            });
+        }
+        if body.content_length != 0 {
+            headers.add(Header {
+                name: "Content-Length".to_string(),
+                value: body.content_length.to_string(),
+            });
         }
         Request {
             body: Some(body),
-            headers: Headers::new(),
+            headers: headers,
             method: method,
             uri: path.to_string(),
             version: Version::HTTP1_1.to_string(),
