@@ -15,7 +15,7 @@ use crate::router::HttpHandler;
 use crate::*;
 
 #[test]
-fn do_a_request() {
+fn client_write_run_post_body() {
     let handler: HttpHandler = Box::new(move |request| {
         let mut content: Vec<u8> = Vec::new();
         request
@@ -35,11 +35,21 @@ fn do_a_request() {
     });
     let (server, addr) = run_server(handler, HttpMethod::POST, "/");
     let body = Body::from("test", mime::TEXT_PLAIN);
-    let request = Request::from_body(body, HttpMethod::POST, "/");
+    let mut request = Request::from_body(body, HttpMethod::POST, "/");
+    //request.set_connection_alive();
     let c = Client::new();
     let response = c.run(&addr, request).expect("Error running request");
+    assert_eq!(response.status, http::StatusCode::OK);
+
+    // Release the connection.
+    drop(response);
+
+    let body = Body::from("test", mime::TEXT_PLAIN);
+    let request = Request::from_body(body, HttpMethod::POST, "/");
+    let response = c.run(&addr, request).expect("Error running 2nd request");
+    assert_eq!(response.status, http::StatusCode::OK);
+
     server.shutdown().expect("Error shuting down server");
-    assert_eq!(response.status, http::StatusCode::OK)
 }
 
 fn run_server(handler: HttpHandler, method: HttpMethod, path: &str) -> (Server, String) {

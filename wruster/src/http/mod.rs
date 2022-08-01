@@ -179,6 +179,33 @@ impl Request {
             version: Version::HTTP1_1.to_string(),
         }
     }
+
+    /**
+    Returns true if there is any [``Header``] with name collection and value ``keep-alive``
+
+    # Examples
+
+    TODO
+
+    */
+    pub fn is_connection_alive(&self) -> bool {
+        match self.headers.get("Connection") {
+            None => false,
+            Some(values) => values
+                .iter()
+                .any(|value| value.to_lowercase() == "keep-alive"),
+        }
+    }
+
+    pub fn set_connection_alive(&mut self) {
+        if self.is_connection_alive() {
+            return;
+        }
+        self.headers.add(Header {
+            name: "Connection".to_string(),
+            value: "keep-alive".to_string(),
+        });
+    }
 }
 
 /// Converts an immutable reference to a Request given [``mime::Mime``] type, a

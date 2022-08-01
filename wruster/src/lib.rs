@@ -184,8 +184,8 @@ impl Server {
     use wruster::router;
     use wruster::router::HttpHandler;
     let routes = router::Router::new();
-    let handler: HttpHandler = Box::new(|request: &mut Request| {
-        let mut body = request.body.as_mut().unwrap();
+    let handler: HttpHandler = Box::new(move |request: Request| {
+        let mut body = request.body.unwrap();
         let mut name = String::new();
         body.content.read_to_string(&mut name).unwrap();
         let greetings = format!("hello {}!!", name);
@@ -277,8 +277,8 @@ impl Server {
     use wruster::router;
     use wruster::router::HttpHandler;
     let routes = router::Router::new();
-    let handler: HttpHandler = Box::new(|request: &mut Request| {
-        let mut body = request.body.as_mut().unwrap();
+    let handler: HttpHandler = Box::new(move |request: Request| {
+        let mut body = request.body.unwrap();
         let mut name = String::new();
         body.content.read_to_string(&mut name).unwrap();
         let greetings = format!("hello {}!!", name);
@@ -322,8 +322,8 @@ impl Server {
      use wruster::router;
      use wruster::router::HttpHandler;
      let routes = router::Router::new();
-     let handler: HttpHandler = Box::new(|request: &mut Request| {
-         let mut body = request.body.as_mut().unwrap();
+     let handler: HttpHandler = Box::new(move |request: Request| {
+         let mut body = request.body.unwrap();
          let mut name = String::new();
          body.content.read_to_string(&mut name).unwrap();
          let greetings = format!("hello {}!!", name);
@@ -386,8 +386,8 @@ fn handle_conversation(
     source_addr: SocketAddr,
 ) {
     debug!("handling conversation with {}", source_addr);
-    let mut keep_alive = true;
-    while keep_alive {
+    let mut handled = false;
+    while !handled {
         let handle_stream = match stream.try_clone() {
             Ok(stream) => stream,
             Err(err) => {
@@ -395,7 +395,7 @@ fn handle_conversation(
                 return;
             }
         };
-        keep_alive = handle_connection(
+        handled = handle_connection(
             handle_stream,
             Arc::clone(&routes),
             source_addr,
@@ -434,7 +434,7 @@ fn handle_connection(
     let timeout_stream = TimeoutStream::from(stream, read_timeout, write_timeout);
     let (request, mut response) = match Request::read_from(timeout_stream) {
         Ok(mut request) => {
-            connection_open = is_connection_alive(&request);
+            connection_open = is_connection_persisten(&request);
             let response = run_action(&mut request, routes);
             (Some(request), response)
         }

@@ -47,6 +47,10 @@ impl DerefMut for ClientResponse {
 impl Drop for ClientResponse {
     fn drop(&mut self) {
         if let Some(pool) = self.pool.upgrade() {
+            if let Some(Body) = self.response.body.as_mut() {
+                // TODO: Handle possible panic here.
+                Body.ensure_read().unwrap();
+            }
             // TODO: Handle possible panic here.
             let pool = pool.lock().unwrap();
             // TODO: Handle possible panic here.
@@ -68,11 +72,16 @@ impl<'a> Client {
     }
 
     pub fn run(&'a self, addr: &str, request: Request) -> Result<ClientResponse, HttpError> {
-        let pool = self.connection_pool.lock().unwrap();
-
-        let conn = match pool.get(addr) {
-            Some(conn) => conn.resource(),
-            None => Self::connect(addr).map(|stream| Arc::new(stream))?,
+        let conn = {
+            if request.is_connection_alive() {
+                let pool = self.connection_pool.lock().unwrap();
+                match pool.get(addr) {
+                    Some(conn) => conn.resource(),
+                    None => Self::connect(addr).map(|stream| Arc::new(stream))?,
+                }
+            } else {
+                Self::connect(addr).map(|stream| Arc::new(stream))?
+            }
         };
         let read_timeout = DEFAULT_READ_RESPONSE_TIMEOUT;
         let write_timeout = DEFAULT_WRITE_REQUEST_TIMEOUT;
@@ -89,7 +98,8 @@ impl<'a> Client {
             Ok(response) => response,
             Err(err) => return Err(err),
         };
-
+        // TODO: when the response does not have body we can just return back
+        // the connection to the pool here.
         let response_pool = Arc::clone(&self.connection_pool);
         let response = ClientResponse {
             response: response,
