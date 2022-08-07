@@ -2,7 +2,6 @@
 Contains a set of helpfull handlers, middlewares and utilities to create
 new handlers in a wruster web server.
 */
-
 use std::fs;
 use std::io::BufReader;
 use std::{io, path::PathBuf};

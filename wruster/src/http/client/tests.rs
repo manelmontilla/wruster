@@ -32,7 +32,6 @@ fn client_keep_alive_reuses_connection() {
     let handler = handler_from_check_body(|content| String::from_utf8_lossy(&content) == "test");
     let (server, addr) = run_server(handler, HttpMethod::POST, "/");
 
-
     let c = Client::new();
     let body = Body::from("test", mime::TEXT_PLAIN);
     let mut request = Request::from_body(body, HttpMethod::POST, "/");
@@ -51,7 +50,7 @@ fn client_keep_alive_reuses_connection() {
 
     // Drop the possible open connections.
     drop(response);
-    drop(c);    
+    drop(c);
     server.shutdown().expect("Error shuting down server");
 }
 

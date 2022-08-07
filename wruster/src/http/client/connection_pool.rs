@@ -128,12 +128,11 @@ where
     /**
      Removes all and returns all the resources from the pool.
     */
-    pub fn drain(&self) -> Vec<PoolResource<T>>{
+    pub fn drain(&self) -> Vec<PoolResource<T>> {
         let mut resources = self.resources.write().unwrap();
         let d = resources.drain();
-        d.map(|(_, resource)|{
-            resource
-        }).collect::<Vec<PoolResource<T>>>()
+        d.map(|(_, resource)| resource)
+            .collect::<Vec<PoolResource<T>>>()
     }
 
     fn remove_lru(connections: &mut HashMap<String, PoolResource<T>>) {

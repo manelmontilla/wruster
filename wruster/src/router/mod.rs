@@ -7,7 +7,7 @@ mod trie;
 use crate::http::{HttpMethod, Request, Response};
 use trie::Trie;
 
-/// Defines a type alias for the Http Handlers associated wih a [``Router`].
+/// Defines a type alias for the Http Handlers associated with a [``Router`].
 pub type HttpHandler = Box<dyn Fn(&mut Request) -> Response + Send + Sync>;
 
 /// Router holds the Handlers that will attend a set of the http routes and methods.

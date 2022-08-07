@@ -48,7 +48,7 @@ use std::io::{Error, ErrorKind};
 use std::net::{SocketAddr, TcpStream};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 use std::thread::JoinHandle;
 use std::{io::Write, time};
 use std::{net, thread};
@@ -95,6 +95,7 @@ pub struct Server {
     handle: Option<JoinHandle<Result<(), Box<Error>>>>,
     poller: Option<Arc<Poller>>,
     timeouts: Timeouts,
+    done: Arc<RwLock<bool>>,
 }
 
 impl Server {
@@ -119,12 +120,14 @@ impl Server {
             read_request_timeout: DEFAULT_READ_REQUEST_TIMEOUT,
             write_response_timeout: DEFAULT_WRITE_RESPONSE_TIMEOUT,
         };
+        let finish_conversations = Arc::new(RwLock::new(false));
         Server {
             stop,
             addr,
             handle,
             poller,
             timeouts,
+            done: finish_conversations,
         }
     }
 
@@ -151,12 +154,14 @@ impl Server {
         let handle = None;
         let poller = None;
         let addr = None;
+        let finish_conversations = Arc::new(RwLock::new(false));
         Server {
             stop,
             addr,
             handle,
             poller,
             timeouts,
+            done: finish_conversations,
         }
     }
 
@@ -217,6 +222,7 @@ impl Server {
         let mut pool = thread_pool::Pool::new(4, 20);
         let stop = Arc::clone(&self.stop);
         let timeouts = self.timeouts.clone();
+        let done = Arc::clone(&self.done);
         let handle = thread::spawn(move || loop {
             events.clear();
             epoller.wait(&mut events, None)?;
@@ -240,8 +246,15 @@ impl Server {
                         continue;
                     }
                 };
+                let handle_done = Arc::clone(&done);
                 let action = move || {
-                    handle_conversation(action_stream, cconfig, action_timeouts.clone(), src_addr);
+                    handle_conversation(
+                        handle_done,
+                        action_stream,
+                        cconfig,
+                        action_timeouts.clone(),
+                        src_addr,
+                    );
                 };
 
                 if pool.run(Box::new(action)).is_err() {
@@ -297,6 +310,10 @@ impl Server {
             let err = Box::new(Error::new(ErrorKind::Other, "server not started"));
             return Err(err);
         }
+        // Signal the ongoing conversation to not attend more requests.
+        let mut done = self.done.write().unwrap();
+        *done = true;
+        drop(done);
         self.stop.as_ref().store(true, Ordering::SeqCst);
         self.poller.unwrap().notify()?;
         let handle = self.handle.unwrap();
@@ -354,7 +371,7 @@ impl Default for Server {
     }
 }
 
-fn handle_busy(mut stream: net::TcpStream, timeouts: Timeouts, src_addr: SocketAddr) {
+fn handle_busy(stream: net::TcpStream, timeouts: Timeouts, src_addr: SocketAddr) {
     debug!("sending too busy to {}", src_addr);
     let write_timeout = Some(timeouts.write_response_timeout);
     let read_timeout = Some(timeouts.read_request_timeout);
@@ -377,6 +394,7 @@ fn handle_busy(mut stream: net::TcpStream, timeouts: Timeouts, src_addr: SocketA
 }
 
 fn handle_conversation(
+    done: Arc<RwLock<bool>>,
     mut stream: net::TcpStream,
     routes: Arc<Router>,
     timeouts: Timeouts,
