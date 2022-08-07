@@ -26,7 +26,34 @@ fn client_write_run_post_body() {
             .read_to_end(&mut content)
             .unwrap();
         let content = String::from_utf8_lossy(&content);
-        print!("payload {}", content);
+        if &content == "test" {
+            Response::from_status(StatusCode::OK)
+        } else {
+            Response::from_status(StatusCode::InternalServerError)
+        }
+    });
+    let (server, addr) = run_server(handler, HttpMethod::POST, "/");
+    let body = Body::from("test", mime::TEXT_PLAIN);
+
+    let c = Client::new();
+    let request = Request::from_body(body, HttpMethod::POST, "/");
+    let response = c.run(&addr, request).expect("Error running request");
+    assert_eq!(response.status, http::StatusCode::OK);
+    server.shutdown().expect("Error shuting down server");
+}
+
+#[test]
+fn client_keep_alive_reuse_connection() {
+    let handler: HttpHandler = Box::new(move |request| {
+        let mut content: Vec<u8> = Vec::new();
+        request
+            .body
+            .as_mut()
+            .unwrap()
+            .content
+            .read_to_end(&mut content)
+            .unwrap();
+        let content = String::from_utf8_lossy(&content);
         if &content == "test" {
             Response::from_status(StatusCode::OK)
         } else {

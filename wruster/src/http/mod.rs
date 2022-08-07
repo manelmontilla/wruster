@@ -181,7 +181,7 @@ impl Request {
     }
 
     /**
-    Returns true if there is any [``Header``] with name collection and value ``keep-alive``
+    Returns true if there is any [``Header``] with name ``Connection`` and value ``keep-alive``.
 
     # Examples
 
@@ -197,6 +197,10 @@ impl Request {
         }
     }
 
+    /**
+     It adds a [``Header``] with name ``Connection`` and value ``keep-alive``,
+     if there wasn't any.
+    */
     pub fn set_connection_alive(&mut self) {
         if self.is_connection_alive() {
             return;
