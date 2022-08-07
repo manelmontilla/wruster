@@ -116,3 +116,15 @@ impl<'a> Client {
         TcpStream::connect(&*addrs).map_err(HttpError::from)
     }
 }
+
+impl Drop for Client {
+    fn drop(&mut self) {
+        let pool = self.connection_pool.lock().unwrap();
+        let connections = pool.drain();
+        drop(pool);
+        for connection in connections {
+            let connection = connection.resource();
+            _ = connection.shutdown(std::net::Shutdown::Both)
+        }
+    }
+}

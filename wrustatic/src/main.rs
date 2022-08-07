@@ -2,7 +2,7 @@ use std::env;
 use std::process;
 use std::time::Duration;
 
-use wruster::handlers::{log_middleware, serve_static};
+use wruster_handlers::{log_middleware, serve_static};
 use wruster::http;
 use wruster::router;
 use wruster::router::HttpHandler;

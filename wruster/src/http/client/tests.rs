@@ -16,26 +16,11 @@ use crate::*;
 
 #[test]
 fn client_write_run_post_body() {
-    let handler: HttpHandler = Box::new(move |request| {
-        let mut content: Vec<u8> = Vec::new();
-        request
-            .body
-            .as_mut()
-            .unwrap()
-            .content
-            .read_to_end(&mut content)
-            .unwrap();
-        let content = String::from_utf8_lossy(&content);
-        if &content == "test" {
-            Response::from_status(StatusCode::OK)
-        } else {
-            Response::from_status(StatusCode::InternalServerError)
-        }
-    });
+    let handler = handler_from_check_body(|content| String::from_utf8_lossy(&content) == "test");
     let (server, addr) = run_server(handler, HttpMethod::POST, "/");
-    let body = Body::from("test", mime::TEXT_PLAIN);
 
     let c = Client::new();
+    let body = Body::from("test", mime::TEXT_PLAIN);
     let request = Request::from_body(body, HttpMethod::POST, "/");
     let response = c.run(&addr, request).expect("Error running request");
     assert_eq!(response.status, http::StatusCode::OK);
@@ -43,28 +28,15 @@ fn client_write_run_post_body() {
 }
 
 #[test]
-fn client_keep_alive_reuse_connection() {
-    let handler: HttpHandler = Box::new(move |request| {
-        let mut content: Vec<u8> = Vec::new();
-        request
-            .body
-            .as_mut()
-            .unwrap()
-            .content
-            .read_to_end(&mut content)
-            .unwrap();
-        let content = String::from_utf8_lossy(&content);
-        if &content == "test" {
-            Response::from_status(StatusCode::OK)
-        } else {
-            Response::from_status(StatusCode::InternalServerError)
-        }
-    });
+fn client_keep_alive_reuses_connection() {
+    let handler = handler_from_check_body(|content| String::from_utf8_lossy(&content) == "test");
     let (server, addr) = run_server(handler, HttpMethod::POST, "/");
+
+
+    let c = Client::new();
     let body = Body::from("test", mime::TEXT_PLAIN);
     let mut request = Request::from_body(body, HttpMethod::POST, "/");
-    //request.set_connection_alive();
-    let c = Client::new();
+    request.set_connection_alive();
     let response = c.run(&addr, request).expect("Error running request");
     assert_eq!(response.status, http::StatusCode::OK);
 
@@ -72,10 +44,14 @@ fn client_keep_alive_reuse_connection() {
     drop(response);
 
     let body = Body::from("test", mime::TEXT_PLAIN);
-    let request = Request::from_body(body, HttpMethod::POST, "/");
+    let mut request = Request::from_body(body, HttpMethod::POST, "/");
+    request.set_connection_alive();
     let response = c.run(&addr, request).expect("Error running 2nd request");
     assert_eq!(response.status, http::StatusCode::OK);
 
+    // Drop the possible open connections.
+    drop(response);
+    drop(c);    
     server.shutdown().expect("Error shuting down server");
 }
 
@@ -99,6 +75,51 @@ fn get_free_port() -> u16 {
         .port()
 }
 
+/*
+body_or(
+        |body| {
+            let mut content: Vec<u8> = Vec::new();
+            body.content.read_to_end(&mut content).unwrap();
+            let content = String::from_utf8_lossy(&content);
+            if &content == "test" {
+                Response::from_status(StatusCode::OK)
+            } else {
+                Response::from_status(StatusCode::BadRequest)
+            }
+        },
+        || Response::from_status(StatusCode::BadRequest),
+    );
+*/
+
+pub fn handler_from_check_body<T: Fn(Vec<u8>) -> bool + Send + Sync + 'static>(
+    check: T,
+) -> HttpHandler {
+    body_or(
+        move |body| {
+            let mut content: Vec<u8> = Vec::new();
+            body.content.read_to_end(&mut content).unwrap();
+            if check(content) {
+                Response::from_status(StatusCode::OK)
+            } else {
+                Response::from_status(StatusCode::BadRequest)
+            }
+        },
+        || Response::from_status(StatusCode::BadRequest),
+    )
+}
+
+pub fn body_or<
+    T: Fn(&mut Body) -> Response + Send + Sync + 'static,
+    K: Fn() -> Response + Send + Sync + 'static,
+>(
+    body_exist: T,
+    no_body: K,
+) -> HttpHandler {
+    Box::new(move |request| match request.body.as_mut() {
+        None => no_body(),
+        Some(body) => body_exist(body),
+    })
+}
 // #[test]
 // fn build_request_from_str() {
 //     let c = Arc::new(Client::new());

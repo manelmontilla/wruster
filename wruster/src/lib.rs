@@ -12,7 +12,6 @@ use std::str::FromStr;
 use std::time::Duration;
 
 use log::LevelFilter;
-use wruster::handlers::log_middleware;
 use wruster::http;
 use wruster::http::Response;
 use wruster::router;
@@ -25,9 +24,9 @@ extern crate log;
 fn main() {
    Builder::new().filter_level(LevelFilter::Info).init();
    let routes = router::Router::new();
-   let handler: HttpHandler = log_middleware(Box::new(move |_| {
+   let handler: HttpHandler = Box::new(move |_| {
        Response::from_str("hello world").unwrap()
-   }));
+   });
    routes.add("/", http::HttpMethod::GET, handler);
    let mut server = Server::new();
    if let Err(err) = server.run("127.0.0.1:8082", routes) {
@@ -57,8 +56,6 @@ use std::{net, thread};
 #[macro_use]
 extern crate log;
 
-/// Contains a set of helpfull handlers.
-pub mod handlers;
 /// Contains all the types necessary for dealing with Http messages.
 pub mod http;
 

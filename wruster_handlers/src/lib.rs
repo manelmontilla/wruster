@@ -1,10 +1,18 @@
+/**
+Contains a set of helpfull handlers, middlewares and utilities to create
+new handlers in a wruster web server.
+*/
+
 use std::fs;
 use std::io::BufReader;
 use std::{io, path::PathBuf};
 
-use crate::http::headers::{Header, Headers};
-use crate::http::{Body, Request, Response, StatusCode};
-use crate::router::HttpHandler;
+#[macro_use]
+extern crate log;
+
+use wruster::http::headers::{Header, Headers};
+use wruster::http::{Body, Request, Response, StatusCode};
+use wruster::router::HttpHandler;
 
 /**
 Implents a handler that serves the files in a directory tree.
@@ -13,9 +21,9 @@ Implents a handler that serves the files in a directory tree.
 
 ```no_run
 use wruster::router;
-use wruster::handlers::serve_static;
 use wruster::http;
 use wruster::Server;
+use wruster_handlers::serve_static;
 
 let addr = "localhost:8085";
 let dir = "./";
@@ -87,10 +95,11 @@ the standard output with INFO level.
 ```no_run
 use std::str::FromStr;
 
-use wruster::handlers;
 use wruster::router;
 use wruster::Server;
 use wruster::http;
+
+use wruster_handlers::log_middleware;
 
 env_logger::init();
 let addr = "localhost:8085";
@@ -99,7 +108,7 @@ let handler: router::HttpHandler = Box::new(move |_| {
     let greetings = "hello!!";
     http::Response::from_str(&greetings).unwrap()
 });
-let handler = handlers::log_middleware(handler);
+let handler = log_middleware(handler);
 routes.add("/", http::HttpMethod::GET, handler);
 let mut server = Server::new();
 server.run(addr, routes).unwrap();

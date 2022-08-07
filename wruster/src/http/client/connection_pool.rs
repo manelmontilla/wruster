@@ -118,14 +118,25 @@ where
         let mut connections = self.resources.write().unwrap();
         let connections = connections.borrow_mut();
         match connections.len() {
-            MAX_RESOURCES => Self::remove_LRU(connections),
+            MAX_RESOURCES => Self::remove_lru(connections),
             _ => {
                 connections.insert(key.to_string(), connection);
             }
         }
     }
 
-    fn remove_LRU(connections: &mut HashMap<String, PoolResource<T>>) {
+    /**
+     Removes all and returns all the resources from the pool.
+    */
+    pub fn drain(&self) -> Vec<PoolResource<T>>{
+        let mut resources = self.resources.write().unwrap();
+        let d = resources.drain();
+        d.map(|(_, resource)|{
+            resource
+        }).collect::<Vec<PoolResource<T>>>()
+    }
+
+    fn remove_lru(connections: &mut HashMap<String, PoolResource<T>>) {
         // TODO: use a priority queue sorted by last_time to make this
         // operation O(1) instead of O(N).
         let conns: Vec<(String, PoolResource<T>)> = connections.drain().collect();
