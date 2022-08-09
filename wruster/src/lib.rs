@@ -470,7 +470,7 @@ Evaluates if a request requires a connection to be [persistent](https://httpwg.o
 */
 fn connection_persistent(request: &http::Request) -> bool {
     let value = match request.headers.get("Connection") {
-        None => "close".to_string(),
+        None => "".to_string(),
         Some(values) => values[0].to_lowercase(),
     };
     if value == "close" {
