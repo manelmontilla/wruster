@@ -43,6 +43,7 @@ fn main() {
 ```
 */
 
+use std::error::Error as StdError;
 use std::io::{Error, ErrorKind};
 use std::net::{SocketAddr, TcpStream};
 use std::path::PathBuf;
@@ -51,7 +52,6 @@ use std::sync::Arc;
 use std::thread::JoinHandle;
 use std::{io::Write, time};
 use std::{net, thread};
-use std::error::Error as StdError;
 
 #[macro_use]
 extern crate log;
@@ -77,7 +77,6 @@ pub const DEFAULT_READ_REQUEST_TIMEOUT: time::Duration = time::Duration::from_se
 
 /// Defines the default max time for a response to be written
 pub const DEFAULT_WRITE_RESPONSE_TIMEOUT: time::Duration = time::Duration::from_secs(60);
-
 
 /// Defines the result type returned from the [``Server``] methods.
 pub type ServerResult = Result<(), Box<dyn StdError>>;
@@ -418,7 +417,7 @@ fn handle_connection(
     let mut timeout_stream = TimeoutStream::from(stream, read_timeout, write_timeout);
     let mut response = match Request::read_from(&mut timeout_stream) {
         Ok(request) => {
-            connection_open = is_connection_alive(&request);
+            connection_open = connection_persistent(&request);
             run_action(request, routes)
         }
         Err(err) => match err {
@@ -466,11 +465,24 @@ fn run_action(mut request: Request<'_>, routes: Arc<Router>) -> Response<'_> {
     action(request)
 }
 
-fn is_connection_alive(request: &http::Request) -> bool {
-    match request.headers.get("Connection") {
-        None => false,
-        Some(values) => values
-            .iter()
-            .any(|value| value.to_lowercase() == "keep-alive"),
+/**
+Evaluates if a request requires a connection to be [persistent](https://httpwg.org/specs/rfc7230.html#rfc.section.6.3).
+*/
+fn connection_persistent(request: &http::Request) -> bool {
+    let value = match request.headers.get("Connection") {
+        None => "close".to_string(),
+        Some(values) => values[0].to_lowercase(),
+    };
+    if value == "close" {
+        return false;
     }
+
+    if request.version == "HTTP/1.1" || request.version == "HTTP/2" {
+        return true;
+    };
+
+    if request.version == "HTTP/1.0" && value == "keep-alive" {
+        return true;
+    };
+    return false;
 }

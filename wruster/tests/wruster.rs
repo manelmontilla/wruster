@@ -32,7 +32,6 @@ fn server_closes_connection_when_timeout() {
         stream: None,
     };
     let request = "POST / HTTP/1.1\r\n\
-Connection: Keep-Alive\r\n\
 Content-Length: 4\r\n\
 \r\n\
 test";
