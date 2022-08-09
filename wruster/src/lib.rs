@@ -71,10 +71,10 @@ use router::{Normalize, Router};
 use crate::timeout_stream::TimeoutStream;
 
 /// Defines the default max time for a request to be read
-pub const DEFAULT_READ_REQUEST_TIMEOUT: time::Duration = time::Duration::from_secs(60);
+pub const DEFAULT_READ_REQUEST_TIMEOUT: time::Duration = time::Duration::from_secs(5);
 
 /// Defines the default max time for a response to be written
-pub const DEFAULT_WRITE_RESPONSE_TIMEOUT: time::Duration = time::Duration::from_secs(60);
+pub const DEFAULT_WRITE_RESPONSE_TIMEOUT: time::Duration = time::Duration::from_secs(5);
 
 /// Defines the result type returned from the [``Server``] methods.
 pub type ServerResult = Result<(), Box<dyn StdError>>;
@@ -449,7 +449,7 @@ fn handle_connection(
     let timeout_stream = TimeoutStream::from(stream, read_timeout, write_timeout);
     let (request, mut response) = match Request::read_from(timeout_stream) {
         Ok(mut request) => {
-            connection_open = is_connection_persisten(&request);
+            connection_open = is_connection_persistent(&request);
             let response = run_action(&mut request, routes);
             (Some(request), response)
         }
@@ -514,9 +514,9 @@ fn run_action(request: &mut Request, routes: Arc<Router>) -> Response {
 /**
 Evaluates if a request requires a connection to be [persistent](https://httpwg.org/specs/rfc7230.html#rfc.section.6.3).
 */
-fn connection_persistent(request: &http::Request) -> bool {
+fn is_connection_persistent(request: &http::Request) -> bool {
     let value = match request.headers.get("Connection") {
-        None => "close".to_string(),
+        None => "".to_string(),
         Some(values) => values[0].to_lowercase(),
     };
     if value == "close" {

@@ -35,7 +35,7 @@ fn client_keep_alive_reuses_connection() {
     let c = Client::new();
     let body = Body::from("test", mime::TEXT_PLAIN);
     let mut request = Request::from_body(body, HttpMethod::POST, "/");
-    request.set_connection_alive();
+    //request.set_connection_alive();
     let response = c.run(&addr, request).expect("Error running request");
     assert_eq!(response.status, http::StatusCode::OK);
 
@@ -44,7 +44,7 @@ fn client_keep_alive_reuses_connection() {
 
     let body = Body::from("test", mime::TEXT_PLAIN);
     let mut request = Request::from_body(body, HttpMethod::POST, "/");
-    request.set_connection_alive();
+    //request.set_connection_alive();
     let response = c.run(&addr, request).expect("Error running 2nd request");
     assert_eq!(response.status, http::StatusCode::OK);
 

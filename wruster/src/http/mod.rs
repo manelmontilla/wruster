@@ -181,7 +181,7 @@ impl Request {
     }
 
     /**
-    Returns true if there is any [``Header``] with name ``Connection`` and value ``keep-alive``.
+    Returns true if there is any [``Header``] with name collection and value ``keep-alive``
 
     # Examples
 
@@ -189,26 +189,22 @@ impl Request {
 
     */
     pub fn is_connection_alive(&self) -> bool {
-        match self.headers.get("Connection") {
-            None => false,
-            Some(values) => values
-                .iter()
-                .any(|value| value.to_lowercase() == "keep-alive"),
+       let value = match self.headers.get("Connection") {
+        None => "".to_string(),
+        Some(values) => values[0].to_lowercase(),
+        };
+        if value == "close" {
+            return false;
         }
-    }
 
-    /**
-     It adds a [``Header``] with name ``Connection`` and value ``keep-alive``,
-     if there wasn't any.
-    */
-    pub fn set_connection_alive(&mut self) {
-        if self.is_connection_alive() {
-            return;
-        }
-        self.headers.add(Header {
-            name: "Connection".to_string(),
-            value: "keep-alive".to_string(),
-        });
+        if self.version == "HTTP/1.1" || self.version == "HTTP/2" {
+            return true;
+        };
+
+        if self.version == "HTTP/1.0" && value == "keep-alive" {
+            return true;
+        };
+        return false;
     }
 }
 
