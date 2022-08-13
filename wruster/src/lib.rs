@@ -42,7 +42,6 @@ fn main() {
 ```
 */
 
-use std::borrow::BorrowMut;
 use std::error::Error as StdError;
 use std::io::{Error, ErrorKind};
 use std::net::{SocketAddr, TcpStream};
@@ -59,6 +58,7 @@ extern crate log;
 /// Contains all the types necessary for dealing with Http messages.
 pub mod http;
 
+mod cancellable_stream;
 /// Contains the router to be used in a [`Server`].
 pub mod router;
 mod thread_pool;

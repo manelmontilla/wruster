@@ -66,7 +66,7 @@ where
         };
         let next_timeout = read.next_timeout();
         if next_timeout.as_secs() == 0 {
-            return Err(io::Error::new(io::ErrorKind::WouldBlock, "time out"));
+            return Err(io::Error::new(io::ErrorKind::WouldBlock, "timeout"));
         }
         let stream = &self.stream;
         if let Err(err) = stream.set_read_timeout(Some(next_timeout)) {

@@ -189,9 +189,9 @@ impl Request {
 
     */
     pub fn is_connection_alive(&self) -> bool {
-       let value = match self.headers.get("Connection") {
-        None => "".to_string(),
-        Some(values) => values[0].to_lowercase(),
+        let value = match self.headers.get("Connection") {
+            None => "".to_string(),
+            Some(values) => values[0].to_lowercase(),
         };
         if value == "close" {
             return false;
