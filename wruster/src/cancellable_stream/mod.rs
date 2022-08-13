@@ -1,14 +1,12 @@
-#![feature(negative_impls)]
 use std::cell::RefCell;
-use std::io::{self, Read};
+use std::io;
 use std::net::TcpStream;
-use std::rc::Rc;
+
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
 use polling::Event;
 
-pub const POOL_TIME: Duration = Duration::from_secs(3);
 
 pub struct CancellableStream<'a> {
     stream: &'a mut TcpStream,
@@ -54,14 +52,11 @@ impl<'a> CancellableStream<'a> {
 
 impl<'a> io::Read for CancellableStream<'a> {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        if !self.poller_init {
-            self.poller.add(&*self.stream, Event::readable(1))?;
-            self.poller_init = true;
-        } else {
-            self.poller.modify(&*self.stream, Event::readable(1))?
-        };
         match self.poller_init {
-            false => self.poller.add(&*self.stream, Event::readable(1))?,
+            false => {
+                self.poller.add(&*self.stream, Event::readable(1))?;
+                self.poller_init = true;
+            },
             true => self.poller.modify(&*self.stream, Event::readable(1))?,
         }
         let mut events = Vec::new();
@@ -72,9 +67,9 @@ impl<'a> io::Read for CancellableStream<'a> {
                 return Err(io::Error::from(io::ErrorKind::Other));
             };
             // TODO: Actually we could be here not only because the timeout
-            // passed without any IO operation but also because the OS returned
-            // no events spuriously, so we should check outselves if the
-            // timeout period has passed, and if not, retry the wait.
+            // passed without any IO operation, but also because the OS
+            // returned no events spuriously, so we should check ourselves if
+            // the timeout period has passed, and if not, retry the wait.
             return Err(io::Error::from(io::ErrorKind::TimedOut));
         }
 
@@ -84,7 +79,7 @@ impl<'a> io::Read for CancellableStream<'a> {
             if evt.key != 1 {
                 continue;
             }
-            let read_buf = &mut buf[bytes_read..buf_len];
+            let read_buf = &mut buf[bytes_read..];
             match self.stream.read(read_buf) {
                 Ok(n) => bytes_read = bytes_read + n,
                 Err(err) => {
@@ -92,18 +87,74 @@ impl<'a> io::Read for CancellableStream<'a> {
                     return Err(err);
                 }
             };
+            // TODO: Actually this is not correct, we should read all the
+            // events returned by wait, even if we end up reading more bytes
+            // than the len of the buffer provider by the caller.
             if bytes_read == buf_len {
                 break;
             }
         }
-        return Ok(bytes_read);
+        Ok(bytes_read)
+    }
+}
+
+impl<'a> io::Write for CancellableStream<'a> {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        match self.poller_init {
+            false => {
+                self.poller.add(&*self.stream, Event::writable(1))?;
+                self.poller_init = true;
+            },
+            true => self.poller.modify(&*self.stream, Event::writable(1))?,
+        }
+        let mut events = Vec::new();
+        let timeout = &self.write_timeout.borrow_mut().clone();
+        let mut bytes_written = 0;
+        let buf_len = buf.len();
+        while bytes_written < buf_len {
+                if self.poller.wait(&mut events, *timeout)? == 0 {
+                    let stop = self.done.read().unwrap();
+                    if *stop == true {
+                        return Err(io::Error::from(io::ErrorKind::Other));
+                    };
+                    // TODO: Actually we could be here not only because the
+                    // timeout passed without any IO operation, but also
+                    // because the OS returned no events spuriously, so we
+                    // should check ourselves if the timeout period has passed,
+                    // and if not, retry the wait.
+                    return Err(io::Error::from(io::ErrorKind::TimedOut));
+                }
+                for evt in &events {
+                    if evt.key != 1 {
+                        continue;
+                    }
+                    let write_buf = &buf[bytes_written..];
+                    match self.stream.write(write_buf) {
+                        Ok(n) => bytes_written = bytes_written + n,
+                        Err(err) if err.kind() == io::ErrorKind::WouldBlock =>  continue,
+                        Err(err) => {
+                            self.stream.set_nonblocking(false)?;
+                            return Err(err);
+                        }
+                    };
+                    if bytes_written == buf_len {
+                        break;
+                    }
+                }
+                events.clear();
+        }
+        Ok(bytes_written)
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        self.stream.flush()
     }
 }
 
 #[cfg(test)]
 mod tests {
     use std::error::Error;
-    use std::io::{BufRead, BufReader, Write};
+    use std::io::{BufRead, BufReader, Write, Read};
     use std::net::{Ipv4Addr, Shutdown, SocketAddrV4, TcpListener};
     use std::thread;
 
@@ -156,6 +207,32 @@ mod tests {
         assert!(received_err.kind() == io::ErrorKind::TimedOut)
     }
 
+    #[test]
+    fn write_writes_data() {
+        let data = "test ";
+        let port = get_free_port();
+        let addr = format!("127.0.0.1:{}", port);
+        let listener = TcpListener::bind(addr.clone()).unwrap();
+        let server_data = data.clone();
+        let handle = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let done = Arc::new(RwLock::new(false));
+            let mut cstream = CancellableStream::new(&mut stream, done).unwrap();
+            let data = server_data.as_bytes();
+            cstream.write(&data)
+        });
+
+        let mut client = TcpClient::connect(addr.to_string()).unwrap();
+        let bytes_sent = handle.join().unwrap().expect("expected data to be written correctly");
+        assert_eq!(bytes_sent, data.len());
+
+        let mut reader = BufReader::new(&mut client);
+        let mut content = Vec::new();
+        reader.read_until(b' ', &mut content).expect("expect data to available");
+        let content = String::from_utf8(content).expect("expect data to be valid");
+        assert_eq!(content, "test ".to_string());
+    }
+
     struct TcpClient {
         stream: Option<TcpStream>,
     }
@@ -174,16 +251,27 @@ mod tests {
             Ok(())
         }
 
-        pub fn close(&mut self) -> Result<(), Box<dyn Error>> {
+        pub fn close(&mut self) -> io::Result<()> {
             let stream = self.stream.as_mut().unwrap();
             stream.shutdown(Shutdown::Both)?;
             Ok(())
+        }
+
+        pub fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+            let stream = self.stream.as_mut().unwrap();
+            stream.read(buf)
         }
     }
 
     impl Drop for TcpClient {
         fn drop(&mut self) {
             let _ = self.close();
+        }
+    }
+
+    impl io::Read for TcpClient {
+        fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+            self.read(buf)
         }
     }
 
