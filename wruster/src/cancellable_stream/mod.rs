@@ -144,7 +144,9 @@ mod tests {
             cstream.set_read_timeout(Some(expected_timeout)).unwrap();
             let mut reader = BufReader::new(&mut cstream);
             let mut content = Vec::new();
-            reader.read_until(b' ', &mut content).expect_err("expected timeout")
+            reader
+                .read_until(b' ', &mut content)
+                .expect_err("expected timeout")
         });
 
         let client = TcpClient::connect(addr.to_string()).unwrap();
@@ -161,7 +163,7 @@ mod tests {
         pub fn connect(addr: String) -> Result<Self, Box<dyn Error>> {
             let stream = TcpStream::connect(&addr)?;
             let stream = Some(stream);
-            Ok(TcpClient {stream})
+            Ok(TcpClient { stream })
         }
 
         pub fn send(&mut self, data: &[u8]) -> Result<(), Box<dyn Error>> {
