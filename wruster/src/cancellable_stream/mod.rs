@@ -72,8 +72,9 @@ impl<'a> io::Read for CancellableStream<'a> {
                 return Err(io::Error::from(io::ErrorKind::Other));
             };
             // TODO: Actually we could be here not only because the timeout
-            // passed without any IO operation, so we should check outselves if
-            // the timeout period has passed, and if not, retry the wait.
+            // passed without any IO operation but also because the OS returned
+            // no events spuriously, so we should check outselves if the
+            // timeout period has passed, and if not, retry the wait.
             return Err(io::Error::from(io::ErrorKind::TimedOut));
         }
 
