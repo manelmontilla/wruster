@@ -7,7 +7,6 @@ use std::time::Duration;
 
 use polling::Event;
 
-
 pub struct CancellableStream<'a> {
     stream: &'a mut TcpStream,
     poller: Arc<polling::Poller>,
@@ -56,7 +55,7 @@ impl<'a> io::Read for CancellableStream<'a> {
             false => {
                 self.poller.add(&*self.stream, Event::readable(1))?;
                 self.poller_init = true;
-            },
+            }
             true => self.poller.modify(&*self.stream, Event::readable(1))?,
         }
         let mut events = Vec::new();
@@ -104,7 +103,7 @@ impl<'a> io::Write for CancellableStream<'a> {
             false => {
                 self.poller.add(&*self.stream, Event::writable(1))?;
                 self.poller_init = true;
-            },
+            }
             true => self.poller.modify(&*self.stream, Event::writable(1))?,
         }
         let mut events = Vec::new();
@@ -112,36 +111,36 @@ impl<'a> io::Write for CancellableStream<'a> {
         let mut bytes_written = 0;
         let buf_len = buf.len();
         while bytes_written < buf_len {
-                if self.poller.wait(&mut events, *timeout)? == 0 {
-                    let stop = self.done.read().unwrap();
-                    if *stop == true {
-                        return Err(io::Error::from(io::ErrorKind::Other));
-                    };
-                    // TODO: Actually we could be here not only because the
-                    // timeout passed without any IO operation, but also
-                    // because the OS returned no events spuriously, so we
-                    // should check ourselves if the timeout period has passed,
-                    // and if not, retry the wait.
-                    return Err(io::Error::from(io::ErrorKind::TimedOut));
+            if self.poller.wait(&mut events, *timeout)? == 0 {
+                let stop = self.done.read().unwrap();
+                if *stop == true {
+                    return Err(io::Error::from(io::ErrorKind::Other));
+                };
+                // TODO: Actually we could be here not only because the
+                // timeout passed without any IO operation, but also
+                // because the OS returned no events spuriously, so we
+                // should check ourselves if the timeout period has passed,
+                // and if not, retry the wait.
+                return Err(io::Error::from(io::ErrorKind::TimedOut));
+            }
+            for evt in &events {
+                if evt.key != 1 {
+                    continue;
                 }
-                for evt in &events {
-                    if evt.key != 1 {
-                        continue;
+                let write_buf = &buf[bytes_written..];
+                match self.stream.write(write_buf) {
+                    Ok(n) => bytes_written = bytes_written + n,
+                    Err(err) if err.kind() == io::ErrorKind::WouldBlock => continue,
+                    Err(err) => {
+                        self.stream.set_nonblocking(false)?;
+                        return Err(err);
                     }
-                    let write_buf = &buf[bytes_written..];
-                    match self.stream.write(write_buf) {
-                        Ok(n) => bytes_written = bytes_written + n,
-                        Err(err) if err.kind() == io::ErrorKind::WouldBlock =>  continue,
-                        Err(err) => {
-                            self.stream.set_nonblocking(false)?;
-                            return Err(err);
-                        }
-                    };
-                    if bytes_written == buf_len {
-                        break;
-                    }
+                };
+                if bytes_written == buf_len {
+                    break;
                 }
-                events.clear();
+            }
+            events.clear();
         }
         Ok(bytes_written)
     }
@@ -154,7 +153,7 @@ impl<'a> io::Write for CancellableStream<'a> {
 #[cfg(test)]
 mod tests {
     use std::error::Error;
-    use std::io::{BufRead, BufReader, Write, Read};
+    use std::io::{BufRead, BufReader, Read, Write};
     use std::net::{Ipv4Addr, Shutdown, SocketAddrV4, TcpListener};
     use std::thread;
 
@@ -168,6 +167,7 @@ mod tests {
         let handle = thread::spawn(move || {
             let (mut stream, _) = listener.accept().unwrap();
             let done = Arc::new(RwLock::new(false));
+            
             let mut cstream = CancellableStream::new(&mut stream, done).unwrap();
             let mut reader = BufReader::new(&mut cstream);
             let mut content = Vec::new();
@@ -223,16 +223,52 @@ mod tests {
         });
 
         let mut client = TcpClient::connect(addr.to_string()).unwrap();
-        let bytes_sent = handle.join().unwrap().expect("expected data to be written correctly");
+        let bytes_sent = handle
+            .join()
+            .unwrap()
+            .expect("expected data to be written correctly");
         assert_eq!(bytes_sent, data.len());
 
         let mut reader = BufReader::new(&mut client);
         let mut content = Vec::new();
-        reader.read_until(b' ', &mut content).expect("expect data to available");
+        reader
+            .read_until(b' ', &mut content)
+            .expect("expect data to available");
         let content = String::from_utf8(content).expect("expect data to be valid");
         assert_eq!(content, "test ".to_string());
     }
 
+    #[test]
+    fn write_hornors_write_timeout() {
+        let data = "test ";
+        let port = get_free_port();
+        let addr = format!("127.0.0.1:{}", port);
+        let listener = TcpListener::bind(addr.clone()).unwrap();
+        let server_data = data.clone();
+        let timeout = Duration::from_secs(2);
+        let handle = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let done = Arc::new(RwLock::new(false));
+            let mut cstream = CancellableStream::new(&mut stream, done).unwrap();
+            cstream.set_write_timeout(Some(timeout)).unwrap();
+            let data = server_data.as_bytes();
+            cstream.write(&data).expect_err("expect timeout error")
+        });
+
+        let mut client = TcpClient::connect(addr.to_string()).unwrap();
+        let err = handle
+            .join()
+            .unwrap();
+        assert_eq!(err.kind(), io::ErrorKind::TimedOut);
+
+        let mut reader = BufReader::new(&mut client);
+        let mut content = Vec::new();
+        reader
+            .read_until(b' ', &mut content)
+            .expect("expect data to available");
+        let content = String::from_utf8(content).expect("expect data to be valid");
+        assert_eq!(content, "test ".to_string());
+    }
     struct TcpClient {
         stream: Option<TcpStream>,
     }
