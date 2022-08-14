@@ -1,31 +1,30 @@
 use std::cell::RefCell;
 use std::io;
 use std::net::TcpStream;
-
-use std::sync::{Arc, RwLock};
+use std::sync::atomic::AtomicBool;
+use std::sync::mpsc::Receiver;
+use std::sync::{atomic, Arc};
 use std::time::Duration;
 
 use polling::Event;
 
-pub struct CancellableStream<'a> {
-    stream: &'a mut TcpStream,
+pub struct CancellableStream {
+    stream: TcpStream,
     poller: Arc<polling::Poller>,
-    done: Arc<RwLock<bool>>,
+    done: AtomicBool,
     poller_init: bool,
     read_timeout: RefCell<Option<Duration>>,
     write_timeout: RefCell<Option<Duration>>,
 }
 
-impl<'a> CancellableStream<'a> {
-    pub fn new(
-        stream: &'a mut TcpStream,
-        done: Arc<RwLock<bool>>,
-    ) -> io::Result<CancellableStream> {
+impl CancellableStream {
+    pub fn new(stream: TcpStream) -> io::Result<CancellableStream> {
         let poller = Arc::new(polling::Poller::new()?);
         let poller_init = false;
         stream.set_nonblocking(true)?;
         let read_timeout = RefCell::new(None);
         let write_timeout = RefCell::new(None);
+        let done = atomic::AtomicBool::new(false);
         return Ok(CancellableStream {
             stream,
             done,
@@ -47,28 +46,35 @@ impl<'a> CancellableStream<'a> {
         *write_timeout = dur;
         Ok(())
     }
+
+    /**
+    Consumes the CancellableStream by unwrapping and returning the inner TcpStream.
+    */
+    pub fn take(self) -> TcpStream {
+        self.stream
+    }
 }
 
-impl<'a> io::Read for CancellableStream<'a> {
+impl io::Read for CancellableStream {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         match self.poller_init {
             false => {
-                self.poller.add(&*self.stream, Event::readable(1))?;
+                self.poller.add(&self.stream, Event::readable(1))?;
                 self.poller_init = true;
             }
-            true => self.poller.modify(&*self.stream, Event::readable(1))?,
+            true => self.poller.modify(&self.stream, Event::readable(1))?,
         }
         let mut events = Vec::new();
         let timeout = &self.read_timeout.borrow_mut().clone();
         if self.poller.wait(&mut events, *timeout)? == 0 {
-            let stop = self.done.read().unwrap();
-            if *stop == true {
+            let stop = self.done.load(atomic::Ordering::SeqCst);
+            if stop == true {
                 return Err(io::Error::from(io::ErrorKind::Other));
             };
             // TODO: Actually we could be here not only because the timeout
-            // passed without any IO operation, but also because the OS
-            // returned no events spuriously, so we should check ourselves if
-            // the timeout period has passed, and if not, retry the wait.
+            // passed without read operations available, but also because the
+            // OS returned no events spuriously, so we should check ourselves
+            // if the timeout period has passed, and if not, retry the wait.
             return Err(io::Error::from(io::ErrorKind::TimedOut));
         }
 
@@ -82,7 +88,6 @@ impl<'a> io::Read for CancellableStream<'a> {
             match self.stream.read(read_buf) {
                 Ok(n) => bytes_read = bytes_read + n,
                 Err(err) => {
-                    self.stream.set_nonblocking(false)?;
                     return Err(err);
                 }
             };
@@ -97,14 +102,14 @@ impl<'a> io::Read for CancellableStream<'a> {
     }
 }
 
-impl<'a> io::Write for CancellableStream<'a> {
+impl io::Write for CancellableStream {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         match self.poller_init {
             false => {
-                self.poller.add(&*self.stream, Event::writable(1))?;
+                self.poller.add(&self.stream, Event::writable(1))?;
                 self.poller_init = true;
             }
-            true => self.poller.modify(&*self.stream, Event::writable(1))?,
+            true => self.poller.modify(&self.stream, Event::writable(1))?,
         }
         let mut events = Vec::new();
         let timeout = &self.write_timeout.borrow_mut().clone();
@@ -112,15 +117,15 @@ impl<'a> io::Write for CancellableStream<'a> {
         let buf_len = buf.len();
         while bytes_written < buf_len {
             if self.poller.wait(&mut events, *timeout)? == 0 {
-                let stop = self.done.read().unwrap();
-                if *stop == true {
+                let stop = self.done.load(atomic::Ordering::SeqCst);
+                if stop == true {
                     return Err(io::Error::from(io::ErrorKind::Other));
                 };
-                // TODO: Actually we could be here not only because the
-                // timeout passed without any IO operation, but also
-                // because the OS returned no events spuriously, so we
-                // should check ourselves if the timeout period has passed,
-                // and if not, retry the wait.
+                // TODO: Actually we could be here not only because the timeout
+                // passed without the stream being ready to accept writes, but
+                // also because the OS returned no events spuriously, so we
+                // should check ourselves if the timeout period has passed, and
+                // if not, retry the wait.
                 return Err(io::Error::from(io::ErrorKind::TimedOut));
             }
             for evt in &events {
@@ -165,10 +170,8 @@ mod tests {
         let addr = format!("127.0.0.1:{}", port);
         let listener = TcpListener::bind(addr.clone()).unwrap();
         let handle = thread::spawn(move || {
-            let (mut stream, _) = listener.accept().unwrap();
-            let done = Arc::new(RwLock::new(false));
-            
-            let mut cstream = CancellableStream::new(&mut stream, done).unwrap();
+            let (stream, _) = listener.accept().unwrap();
+            let mut cstream = CancellableStream::new(stream).unwrap();
             let mut reader = BufReader::new(&mut cstream);
             let mut content = Vec::new();
             reader.read_until(b' ', &mut content).unwrap();
@@ -190,9 +193,8 @@ mod tests {
         let read_timeout = Duration::from_secs(2);
         let expected_timeout = read_timeout.clone();
         let handle = thread::spawn(move || {
-            let (mut stream, _) = listener.accept().unwrap();
-            let done = Arc::new(RwLock::new(false));
-            let mut cstream = CancellableStream::new(&mut stream, done).unwrap();
+            let (stream, _) = listener.accept().unwrap();
+            let mut cstream = CancellableStream::new(stream).unwrap();
             cstream.set_read_timeout(Some(expected_timeout)).unwrap();
             let mut reader = BufReader::new(&mut cstream);
             let mut content = Vec::new();
@@ -215,9 +217,8 @@ mod tests {
         let listener = TcpListener::bind(addr.clone()).unwrap();
         let server_data = data.clone();
         let handle = thread::spawn(move || {
-            let (mut stream, _) = listener.accept().unwrap();
-            let done = Arc::new(RwLock::new(false));
-            let mut cstream = CancellableStream::new(&mut stream, done).unwrap();
+            let (stream, _) = listener.accept().unwrap();
+            let mut cstream = CancellableStream::new(stream).unwrap();
             let data = server_data.as_bytes();
             cstream.write(&data)
         });
@@ -238,37 +239,6 @@ mod tests {
         assert_eq!(content, "test ".to_string());
     }
 
-    #[test]
-    fn write_hornors_write_timeout() {
-        let data = "test ";
-        let port = get_free_port();
-        let addr = format!("127.0.0.1:{}", port);
-        let listener = TcpListener::bind(addr.clone()).unwrap();
-        let server_data = data.clone();
-        let timeout = Duration::from_secs(2);
-        let handle = thread::spawn(move || {
-            let (mut stream, _) = listener.accept().unwrap();
-            let done = Arc::new(RwLock::new(false));
-            let mut cstream = CancellableStream::new(&mut stream, done).unwrap();
-            cstream.set_write_timeout(Some(timeout)).unwrap();
-            let data = server_data.as_bytes();
-            cstream.write(&data).expect_err("expect timeout error")
-        });
-
-        let mut client = TcpClient::connect(addr.to_string()).unwrap();
-        let err = handle
-            .join()
-            .unwrap();
-        assert_eq!(err.kind(), io::ErrorKind::TimedOut);
-
-        let mut reader = BufReader::new(&mut client);
-        let mut content = Vec::new();
-        reader
-            .read_until(b' ', &mut content)
-            .expect("expect data to available");
-        let content = String::from_utf8(content).expect("expect data to be valid");
-        assert_eq!(content, "test ".to_string());
-    }
     struct TcpClient {
         stream: Option<TcpStream>,
     }

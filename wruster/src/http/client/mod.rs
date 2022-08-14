@@ -47,9 +47,9 @@ impl DerefMut for ClientResponse {
 impl Drop for ClientResponse {
     fn drop(&mut self) {
         if let Some(pool) = self.pool.upgrade() {
-            if let Some(Body) = self.response.body.as_mut() {
+            if let Some(body) = self.response.body.as_mut() {
                 // TODO: Handle possible panic here.
-                Body.ensure_read().unwrap();
+                body.ensure_read().unwrap();
             }
             // TODO: Handle possible panic here.
             let pool = pool.lock().unwrap();

@@ -246,7 +246,7 @@ impl HttpRequestLine {
         let mut method = Vec::new();
         if let Err(err) = from.read_until(b' ', &mut method) {
             let err = match err.kind() {
-                io::ErrorKind::WouldBlock => Err(Timeout),
+                io::ErrorKind::TimedOut => Err(Timeout),
                 _ => Err(Unknown(err.to_string())),
             };
             return err;
@@ -721,7 +721,7 @@ impl HttpResponseLine {
         let mut http_version = Vec::new();
         if let Err(err) = from.read_until(b' ', &mut http_version) {
             let err = match err.kind() {
-                io::ErrorKind::WouldBlock => Err(Timeout),
+                io::ErrorKind::TimedOut => Err(Timeout),
                 _ => Err(Unknown(err.to_string())),
             };
             return err;
