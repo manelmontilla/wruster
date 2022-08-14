@@ -57,12 +57,12 @@ extern crate log;
 
 /// Contains all the types necessary for dealing with Http messages.
 pub mod http;
-
 mod cancellable_stream;
 /// Contains the router to be used in a [`Server`].
 pub mod router;
 mod thread_pool;
 mod timeout_stream;
+mod art;
 
 use http::*;
 use polling::{Event, Poller};
