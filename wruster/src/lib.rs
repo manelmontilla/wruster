@@ -42,6 +42,7 @@ fn main() {
 ```
 */
 
+
 use std::error::Error as StdError;
 use std::io::{Error, ErrorKind};
 use std::net::{SocketAddr, TcpStream};
@@ -57,18 +58,17 @@ extern crate log;
 
 /// Contains all the types necessary for dealing with Http messages.
 pub mod http;
-mod cancellable_stream;
 /// Contains the router to be used in a [`Server`].
 pub mod router;
-mod thread_pool;
-mod timeout_stream;
 mod art;
+mod streams;
+mod thread_pool;
 
 use http::*;
 use polling::{Event, Poller};
 use router::{Normalize, Router};
 
-use crate::timeout_stream::TimeoutStream;
+use streams::timeout_stream::TimeoutStream;
 
 /// Defines the default max time for a request to be read
 pub const DEFAULT_READ_REQUEST_TIMEOUT: time::Duration = time::Duration::from_secs(5);
@@ -447,6 +447,7 @@ fn handle_connection(
     };
 
     let timeout_stream = TimeoutStream::from(stream, read_timeout, write_timeout);
+    //let timeout_stream = Arc::new(RwLock::new(timeout_stream));
     let (request, mut response) = match Request::read_from(timeout_stream) {
         Ok(mut request) => {
             connection_open = is_connection_persistent(&request);

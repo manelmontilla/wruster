@@ -2,7 +2,7 @@ use std::io::{self, ErrorKind};
 use std::net::TcpStream;
 use std::time::{Duration, Instant};
 
-use crate::cancellable_stream::CancellableStream;
+use super::cancellable_stream::CancellableStream;
 
 pub trait Timeout {
     fn set_read_timeout(&self, dur: Option<Duration>) -> io::Result<()>;

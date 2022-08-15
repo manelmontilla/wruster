@@ -2,14 +2,13 @@ use crate::http::*;
 use std::net::SocketAddr;
 use std::net::TcpStream;
 use std::net::ToSocketAddrs;
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::ops::Deref;
 use std::ops::DerefMut;
 use std::sync::Mutex;
 use std::sync::{Arc, Weak};
 use std::time;
 
-use crate::timeout_stream::TimeoutStream;
+use crate::streams::timeout_stream::TimeoutStream;
 use connection_pool::{Pool, PoolResource};
 
 mod connection_pool;
