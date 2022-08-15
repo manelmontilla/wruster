@@ -132,6 +132,7 @@ impl Request {
             uri: self.uri,
             version: self.version,
         };
+
         start_line.write(to)?;
         if self.body.is_none() {
             self.headers.add(Header {

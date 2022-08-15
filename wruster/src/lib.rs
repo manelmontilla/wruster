@@ -69,6 +69,9 @@ use router::{Normalize, Router};
 
 use streams::timeout_stream::TimeoutStream;
 
+use crate::streams::cancellable_stream::CancellableStream;
+use crate::streams::SyncStream;
+
 /// Defines the default max time for a request to be read
 pub const DEFAULT_READ_REQUEST_TIMEOUT: time::Duration = time::Duration::from_secs(5);
 

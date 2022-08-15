@@ -47,6 +47,10 @@ impl CancellableStream {
         Ok(())
     }
 
+    pub fn shutdown(&self) -> io::Result<()> {
+        self.poller.notify()
+    }
+
     /**
     Consumes the CancellableStream by unwrapping and returning the inner TcpStream.
     */
