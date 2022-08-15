@@ -1,90 +1,104 @@
 use std::{
     collections::{hash_map, HashMap},
     io::{self, Read, Write},
-    ops::Deref,
+    ops::{Deref, DerefMut},
     sync::{
         atomic::{AtomicUsize, Ordering},
         Arc, RwLock, Weak,
     },
 };
 
-use std::collections::hash_map::Iter;
-
 pub mod cancellable_stream;
 pub mod timeout_stream;
 
 use timeout_stream::Timeout;
 
-pub struct SyncStream<T: io::Read + io::Write + Timeout> {
-    read_writer: T,
+pub struct ObservedStream<T: io::Read + io::Write + Timeout> {
+    observed: T,
     parent: Option<(usize, Weak<TrackedStreamList<T>>)>,
 }
 
-impl<T> SyncStream<T>
+impl<T> ObservedStream<T>
 where
     T: io::Read + io::Write + Timeout,
 {
-    pub fn new(read_writer: T) -> SyncStream<T> {
-        SyncStream {
-            read_writer,
+    pub fn new(observed: T) -> ObservedStream<T> {
+        ObservedStream {
+            observed,
             parent: None,
         }
     }
 }
 
-impl<T> io::Read for SyncStream<T>
+impl<T> Deref for ObservedStream<T>
+where
+    T: io::Read + io::Write + Timeout,
+{
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        &self.observed
+    }
+}
+
+impl<T> DerefMut for ObservedStream<T>
+where
+    T: io::Read + io::Write + Timeout,
+{
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.observed
+    }
+}
+
+impl<T> io::Read for ObservedStream<T>
 where
     T: io::Read + io::Write + Timeout,
 {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        self.read_writer.read(buf)
+        self.observed.read(buf)
     }
 }
 
-impl<T> io::Write for SyncStream<T>
+impl<T> io::Write for ObservedStream<T>
 where
     T: io::Read + io::Write + Timeout,
 {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        self.read_writer.write(buf)
+        self.observed.write(buf)
     }
 
     fn flush(&mut self) -> io::Result<()> {
-        self.read_writer.flush()
+        self.observed.flush()
     }
 }
 
-impl<T> Timeout for SyncStream<T>
+impl<T> Timeout for ObservedStream<T>
 where
     T: io::Read + io::Write + Timeout,
 {
     fn set_read_timeout(&self, dur: Option<std::time::Duration>) -> io::Result<()> {
-        self.read_writer.set_read_timeout(dur)
+        self.observed.set_read_timeout(dur)
     }
 
     fn set_write_timeout(&self, dur: Option<std::time::Duration>) -> io::Result<()> {
-        self.read_writer.set_write_timeout(dur)
+        self.observed.set_write_timeout(dur)
     }
 }
 
-impl<T> From<T> for SyncStream<T>
+impl<T> From<T> for ObservedStream<T>
 where
     T: io::Read + io::Write + Timeout,
 {
     fn from(it: T) -> Self {
-        SyncStream::new(it)
+        ObservedStream::new(it)
     }
-}
-
-pub trait Dropped {
-    fn dropped(&self, key: usize);
 }
 
 pub struct TrackedStream<T>
 where
     T: Read + Write + Timeout,
 {
-    stream: Arc<RwLock<SyncStream<T>>>,
+    stream: Arc<RwLock<ObservedStream<T>>>,
 }
 
 impl<T> Clone for TrackedStream<T>
@@ -97,7 +111,7 @@ where
     }
 }
 
-impl<T> Drop for SyncStream<T>
+impl<T> Drop for ObservedStream<T>
 where
     T: Read + Write + Timeout,
 {
@@ -157,7 +171,7 @@ pub struct TrackedStreamList<T>
 where
     T: Read + Write + Timeout,
 {
-    items: RwLock<HashMap<usize, Weak<RwLock<SyncStream<T>>>>>,
+    items: RwLock<HashMap<usize, Weak<RwLock<ObservedStream<T>>>>>,
     next_key: AtomicUsize,
 }
 
@@ -166,7 +180,7 @@ where
     T: Read + Write + Timeout,
 {
     pub fn new() -> Arc<TrackedStreamList<T>> {
-        let items = HashMap::<usize, Weak<RwLock<SyncStream<T>>>>::new();
+        let items = HashMap::<usize, Weak<RwLock<ObservedStream<T>>>>::new();
         let list = TrackedStreamList {
             items: RwLock::new(items),
             next_key: AtomicUsize::new(0),
@@ -175,7 +189,7 @@ where
     }
 
     pub fn track(list: &Arc<TrackedStreamList<T>>, stream: T) -> TrackedStream<T> {
-        let mut stream = SyncStream::new(stream);
+        let mut stream = ObservedStream::new(stream);
         let parent = Arc::downgrade(list);
         let key = list.next_key.fetch_add(1, Ordering::SeqCst);
         stream.parent = Some((key, parent));
@@ -206,7 +220,7 @@ mod test {
 
     use crate::art::*;
     use crate::http::{Body, Request, Response};
-    use crate::streams::SyncStream;
+    use crate::streams::ObservedStream;
 
     use super::timeout_stream::Timeout;
 
@@ -260,7 +274,6 @@ mod test {
             finished: AtomicBool::new(false),
         };
         let track_list = TrackedStreamList::<Dummy>::new();
-
         let mut dummy_tracked = TrackedStreamList::track(&track_list, dummy);
         let dummy_tracked1 = dummy_tracked.clone();
         println!("data before {:}", &track_list.len());
