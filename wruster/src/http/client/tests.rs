@@ -1,5 +1,5 @@
 use super::*;
-use std::net::{SocketAddrV4, TcpListener, Ipv4Addr};
+use std::net::{Ipv4Addr, SocketAddrV4, TcpListener};
 use std::thread;
 
 use std::sync::{Arc, Mutex};

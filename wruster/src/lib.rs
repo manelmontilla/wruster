@@ -42,7 +42,6 @@ fn main() {
 ```
 */
 
-
 use std::error::Error as StdError;
 use std::io::{Error, ErrorKind};
 use std::net::{SocketAddr, TcpStream};
@@ -56,11 +55,11 @@ use std::{net, thread};
 #[macro_use]
 extern crate log;
 
+mod art;
 /// Contains all the types necessary for dealing with Http messages.
 pub mod http;
 /// Contains the router to be used in a [`Server`].
 pub mod router;
-mod art;
 mod streams;
 mod thread_pool;
 
