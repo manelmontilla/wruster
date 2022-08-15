@@ -1,6 +1,8 @@
-use std::io;
+use std::io::{self, ErrorKind};
 use std::net::TcpStream;
 use std::time::{Duration, Instant};
+
+use super::cancellable_stream::CancellableStream;
 
 pub trait Timeout {
     fn set_read_timeout(&self, dur: Option<Duration>) -> io::Result<()>;
@@ -17,20 +19,30 @@ impl Timeout for TcpStream {
     }
 }
 
-pub struct TimeoutStream<'a, T: io::Read + io::Write + Timeout> {
-    stream: &'a mut T,
+impl Timeout for CancellableStream {
+    fn set_read_timeout(&self, dur: Option<Duration>) -> io::Result<()> {
+        self.set_read_timeout(dur)
+    }
+
+    fn set_write_timeout(&self, dur: Option<Duration>) -> io::Result<()> {
+        self.set_write_timeout(dur)
+    }
+}
+
+pub struct TimeoutStream<T: io::Read + io::Write + Timeout> {
+    stream: T,
     read: Option<Duration>,
     write: Option<Duration>,
     ongoing_read: Option<Operation>,
     ongoing_write: Option<Operation>,
 }
 
-impl<'a, T> TimeoutStream<'a, T>
+impl<T> TimeoutStream<T>
 where
     T: io::Read + io::Write + Timeout,
 {
-    pub fn from(
-        from: &mut T,
+    pub fn from<'a>(
+        from: T,
         read_timeout: Option<Duration>,
         write_timeout: Option<Duration>,
     ) -> TimeoutStream<T> {
@@ -42,9 +54,13 @@ where
             write: write_timeout,
         }
     }
+
+    pub fn take(self) -> T {
+        self.stream
+    }
 }
 
-impl<'a, T> io::Read for TimeoutStream<'a, T>
+impl<T> io::Read for TimeoutStream<T>
 where
     T: io::Read + io::Write + Timeout,
 {
@@ -66,19 +82,27 @@ where
         };
         let next_timeout = read.next_timeout();
         if next_timeout.as_secs() == 0 {
-            return Err(io::Error::new(io::ErrorKind::WouldBlock, "time out"));
+            return Err(io::Error::from(io::ErrorKind::TimedOut));
         }
-        if let Err(err) = self.stream.set_read_timeout(Some(next_timeout)) {
+        let stream = &self.stream;
+        if let Err(err) = stream.set_read_timeout(Some(next_timeout)) {
             return io::Result::Err(err);
         }
         read.start();
-        let res = self.stream.read(buf);
+        let res = self.stream.read(buf).map_err(|err| {
+            // REVIEW: In some cases a read operation over a stream returns
+            // WouldBlock instead of the expected TimedOut.
+            match err.kind() {
+                ErrorKind::WouldBlock => io::Error::from(ErrorKind::TimedOut),
+                _ => err,
+            }
+        });
         read.stop();
         res
     }
 }
 
-impl<'a, T> io::Write for TimeoutStream<'a, T>
+impl<T> io::Write for TimeoutStream<T>
 where
     T: io::Read + io::Write + Timeout,
 {
@@ -100,19 +124,26 @@ where
         };
         let next_timeout = write.next_timeout();
         if next_timeout.as_secs() == 0 {
-            return Err(io::Error::new(io::ErrorKind::WouldBlock, "time out"));
+            return Err(io::Error::from(io::ErrorKind::TimedOut));
         }
         if let Err(err) = self.stream.set_write_timeout(Some(next_timeout)) {
             return io::Result::Err(err);
         }
         write.start();
-        let res = self.stream.write(buf);
+        let res = self.stream.write(buf).map_err(|err| {
+            // REVIEW: In some cases a read operation over a stream returns
+            // WouldBlock instead of the expected TimedOut.
+            match err.kind() {
+                ErrorKind::WouldBlock => io::Error::from(ErrorKind::TimedOut),
+                _ => err,
+            }
+        });
         write.stop();
         res
     }
 
     fn flush(&mut self) -> io::Result<()> {
-        todo!()
+        self.stream.flush()
     }
 }
 
@@ -159,6 +190,7 @@ mod tests {
     use std::error::Error;
     use std::io::{BufRead, BufReader, Write};
     use std::net::{Ipv4Addr, Shutdown, SocketAddrV4, TcpListener};
+    use std::sync::{Arc, RwLock};
     use std::thread;
 
     use super::*;
@@ -171,8 +203,8 @@ mod tests {
         let read_timeout = Duration::from_secs(3);
         let expected_timeout = read_timeout.clone();
         let handle = thread::spawn(move || {
-            let (mut stream, _) = listener.accept().unwrap();
-            let mut tstream = TimeoutStream::from(&mut stream, Some(read_timeout), None);
+            let (stream, _) = listener.accept().unwrap();
+            let mut tstream = TimeoutStream::from(stream, Some(read_timeout), None);
             let mut reader = BufReader::new(&mut tstream);
             let mut content = Vec::new();
             reader.read_until(b' ', &mut content).unwrap();
@@ -191,7 +223,39 @@ mod tests {
         client.send("this should not get read".as_bytes()).unwrap();
         let (received, err) = handle.join().unwrap();
         assert_eq!(received, "test ".to_string());
-        assert_eq!(err.kind(), io::ErrorKind::WouldBlock);
+        assert_eq!(err.kind(), io::ErrorKind::TimedOut);
+    }
+
+    #[test]
+    fn enforces_read_timeouts_for_cancellable() {
+        let port = get_free_port();
+        let addr = format!("127.0.0.1:{}", port);
+        let listener = TcpListener::bind(addr.clone()).unwrap();
+        let read_timeout = Duration::from_secs(3);
+        let expected_timeout = read_timeout.clone();
+        let handle = thread::spawn(move || {
+            let (stream, _) = listener.accept().unwrap();
+            let stream = CancellableStream::new(stream).unwrap();
+            let mut stream = TimeoutStream::from(stream, Some(read_timeout), None);
+            let mut reader = BufReader::new(&mut stream);
+            let mut content = Vec::new();
+            reader.read_until(b' ', &mut content).unwrap();
+            let first_read = String::from_utf8_lossy(&content);
+            let mut content = Vec::new();
+            let second_read_err = reader
+                .read_until(b' ', &mut content)
+                .expect_err("expected timeout error");
+            (first_read.into_owned(), second_read_err)
+        });
+
+        let mut client = TcpClient::connect(addr.to_string()).unwrap();
+        thread::sleep(Duration::from_secs(1));
+        client.send("test ".as_bytes()).unwrap();
+        thread::sleep(expected_timeout);
+        client.send("this should not get read".as_bytes()).unwrap();
+        let (received, err) = handle.join().unwrap();
+        assert_eq!(received, "test ".to_string());
+        assert_eq!(err.kind(), io::ErrorKind::TimedOut);
     }
 
     struct TcpClient {

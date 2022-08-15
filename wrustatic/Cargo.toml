@@ -8,6 +8,7 @@ edition = "2018"
 [dependencies]
 
 wruster = { path ="../wruster"}
+wruster_handlers = { path ="../wruster_handlers"}
 
 log = "0.4.14"
 env_logger = "0.8.4"

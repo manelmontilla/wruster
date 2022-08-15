@@ -1,5 +1,6 @@
 use super::*;
 use std::io::BufReader;
+use std::io::Read;
 use std::iter::FromIterator;
 
 #[test]
@@ -129,13 +130,29 @@ test";
 }
 
 #[test]
+fn http_request_write() {
+    let payload = "body";
+    let req = Request::from(
+        payload,
+        mime::TEXT_PLAIN,
+        HttpMethod::GET,
+        "http://example.com".to_string(),
+    );
+    let mut to: Vec<u8> = Vec::new();
+    req.write(&mut to).unwrap();
+    let got = String::from_utf8(to).unwrap();
+    let want = "GET http://example.com HTTP/1.1\r\n\r\nbody";
+    assert_eq!(want, &got)
+}
+
+#[test]
 fn http_body_write() {
     let content = "#wruster";
-    let mut body = Body {
-        content: Box::new(Cursor::new(content)),
-        content_type: Some(mime::TEXT_PLAIN),
-        content_length: content.len() as u64,
-    };
+    let mut body = Body::new(
+        Some(mime::TEXT_PLAIN),
+        content.len() as u64,
+        Box::new(Cursor::new(content)),
+    );
     let mut to: Vec<u8> = Vec::new();
 
     body.write(&mut to).unwrap();
@@ -146,11 +163,11 @@ fn http_body_write() {
 #[test]
 fn http_response_write() {
     let content = "#wruster";
-    let body = Body {
-        content: Box::new(Cursor::new(content)),
-        content_type: Some(mime::TEXT_PLAIN),
-        content_length: content.len() as u64,
-    };
+    let body = Body::new(
+        Some(mime::TEXT_PLAIN),
+        content.len() as u64,
+        Box::new(Cursor::new(content)),
+    );
 
     let mut headers = Headers::new();
     headers.add(Header {
@@ -216,4 +233,25 @@ fn http_body_read_from_invalid_content_type() {
         value: "4".to_string(),
     });
     assert!(Body::read_from(from, &headers).is_err(), "");
+}
+
+#[test]
+fn http_body_read_updates_read_bytes() {
+    let from = Cursor::new("test");
+    let mut headers = Headers::new();
+    headers.add(Header {
+        name: "Content-Type".to_string(),
+        value: mime::TEXT_PLAIN.to_string(),
+    });
+    headers.add(Header {
+        name: "Content-Length".to_string(),
+        value: "4".to_string(),
+    });
+    let mut body = Body::read_from(from, &headers)
+        .expect("reading body")
+        .unwrap();
+    let mut buf = String::new();
+    let size = body.read_to_string(&mut buf).expect("error reading");
+    assert_eq!(size, 4);
+    assert_eq!(body.bytes_read, 4)
 }
