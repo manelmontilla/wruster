@@ -12,7 +12,6 @@ use std::str::FromStr;
 use std::time::Duration;
 
 use log::LevelFilter;
-use wruster::handlers::log_middleware;
 use wruster::http;
 use wruster::http::Response;
 use wruster::router;
@@ -25,9 +24,9 @@ extern crate log;
 fn main() {
    Builder::new().filter_level(LevelFilter::Info).init();
    let routes = router::Router::new();
-   let handler: HttpHandler = log_middleware(Box::new(move |_| {
+   let handler: HttpHandler = Box::new(move |_| {
        Response::from_str("hello world").unwrap()
-   }));
+   });
    routes.add("/", http::HttpMethod::GET, handler);
    let mut server = Server::new();
    if let Err(err) = server.run("127.0.0.1:8082", routes) {
@@ -48,7 +47,7 @@ use std::io::{Error, ErrorKind};
 use std::net::{SocketAddr, TcpStream};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 use std::thread::JoinHandle;
 use std::{io::Write, time};
 use std::{net, thread};
@@ -56,27 +55,29 @@ use std::{net, thread};
 #[macro_use]
 extern crate log;
 
-/// Contains a set of helpfull handlers.
-pub mod handlers;
 /// Contains all the types necessary for dealing with Http messages.
 pub mod http;
-
 /// Contains the router to be used in a [`Server`].
 pub mod router;
+mod streams;
 mod thread_pool;
-mod timeout_stream;
 
+use http::errors::HttpError;
 use http::*;
 use polling::{Event, Poller};
 use router::{Normalize, Router};
 
-use crate::timeout_stream::TimeoutStream;
+use streams::timeout_stream::TimeoutStream;
+use streams::TrackedStream;
+
+use crate::streams::cancellable_stream::CancellableStream;
+use crate::streams::TrackedStreamList;
 
 /// Defines the default max time for a request to be read
-pub const DEFAULT_READ_REQUEST_TIMEOUT: time::Duration = time::Duration::from_secs(60);
+pub const DEFAULT_READ_REQUEST_TIMEOUT: time::Duration = time::Duration::from_secs(30);
 
 /// Defines the default max time for a response to be written
-pub const DEFAULT_WRITE_RESPONSE_TIMEOUT: time::Duration = time::Duration::from_secs(60);
+pub const DEFAULT_WRITE_RESPONSE_TIMEOUT: time::Duration = time::Duration::from_secs(30);
 
 /// Defines the result type returned from the [``Server``] methods.
 pub type ServerResult = Result<(), Box<dyn StdError>>;
@@ -90,7 +91,7 @@ pub struct Timeouts {
     pub write_response_timeout: time::Duration,
 }
 
-/// Represents a web server that can be run passing a [`router::Router`].
+/// Represents a web server that can be run by passing a [`router::Router`].
 pub struct Server {
     stop: Arc<AtomicBool>,
     addr: Option<String>,
@@ -183,8 +184,8 @@ impl Server {
     use wruster::router;
     use wruster::router::HttpHandler;
     let routes = router::Router::new();
-    let handler: HttpHandler = Box::new(move |request: Request| {
-        let mut body = request.body.unwrap();
+    let handler: HttpHandler = Box::new(move |request: &mut Request| {
+        let body = &mut request.body.as_mut().unwrap();
         let mut name = String::new();
         body.content.read_to_string(&mut name).unwrap();
         let greetings = format!("hello {}!!", name);
@@ -198,10 +199,18 @@ impl Server {
 
     # Errors
 
-    This function will return an error if the address is wrong formatted or
-    not free.
+    This function will return an error if:
+        * The address is wrong formatted or not free.
+        * The server is already started.
     */
     pub fn run(&mut self, addr: &str, routes: Router) -> ServerResult {
+        if self.poller.is_some() {
+            return Err(Box::new(Error::new(
+                ErrorKind::Other,
+                "server already started",
+            )));
+        }
+
         let listener = match net::TcpListener::bind(addr) {
             Ok(listener) => listener,
             Err(err) => return Err(Box::new(err)),
@@ -219,41 +228,69 @@ impl Server {
         let mut pool = thread_pool::Pool::new(4, 20);
         let stop = Arc::clone(&self.stop);
         let timeouts = self.timeouts.clone();
-        let handle = thread::spawn(move || loop {
-            events.clear();
-            epoller.wait(&mut events, None)?;
-            for evt in &events {
-                if evt.key != 1 {
-                    continue;
-                }
-                let (stream, src_addr) = match listener.accept() {
-                    Err(err) => return Err(Box::new(err)),
-                    Ok(connection) => connection,
-                };
-                stream.set_nonblocking(false).unwrap();
-                epoller.modify(&listener, Event::readable(1)).unwrap();
-                info!("accepting connection from {}", src_addr);
-                let cconfig = Arc::clone(&routes);
-                let action_timeouts = timeouts.clone();
-                let action_stream = match stream.try_clone() {
-                    Ok(stream) => stream,
-                    Err(err) => {
-                        error!("error cloning stream: {}", err.to_string());
+        let active_streams = TrackedStreamList::new();
+        let handle = thread::spawn(move || {
+            loop {
+                debug!("tracked streams {}", active_streams.len());
+                events.clear();
+                epoller.wait(&mut events, None)?;
+                for evt in &events {
+                    if evt.key != 1 {
                         continue;
                     }
-                };
-                let action = move || {
-                    handle_conversation(action_stream, cconfig, action_timeouts.clone(), src_addr);
-                };
+                    let (stream, src_addr) = match listener.accept() {
+                        Err(err) => return Err(Box::new(err)),
+                        Ok(connection) => connection,
+                    };
+                    stream.set_nonblocking(false).unwrap();
+                    epoller.modify(&listener, Event::readable(1)).unwrap();
+                    info!("accepting connection from {}", src_addr);
+                    let cconfig = Arc::clone(&routes);
+                    let action_timeouts = timeouts.clone();
 
-                if pool.run(Box::new(action)).is_err() {
-                    error!("server to busy to handle connection with: {}", src_addr);
-                    handle_busy(stream, timeouts.clone(), src_addr);
+                    let action_stream = match CancellableStream::new(stream) {
+                        Ok(stream) => stream,
+                        Err(err) => {
+                            error!("error cloning stream: {}", err.to_string());
+                            continue;
+                        }
+                    };
+                    let action_stream = TrackedStreamList::track(&active_streams, action_stream);
+                    let local_action_stream = action_stream.clone();
+                    let action = move || {
+                        handle_conversation(
+                            action_stream,
+                            cconfig,
+                            action_timeouts.clone(),
+                            src_addr,
+                        );
+                    };
+
+                    if pool.run(Box::new(action)).is_err() {
+                        error!("server too busy to handle connection with: {}", src_addr);
+                        handle_busy(local_action_stream, timeouts.clone(), src_addr);
+                    }
                 }
+                if stop.as_ref().load(Ordering::SeqCst) {
+                    let pending = active_streams.drain();
+                    for p in pending {
+                        match p.upgrade() {
+                            Some(p) => {
+                                match p.shutdown(net::Shutdown::Both) {
+                                    Ok(()) => debug!("pending active connection closed"),
+                                    Err(err) => {
+                                        error!("error closing a pending active connection {}", err)
+                                    }
+                                };
+                            }
+                            None => debug!("pending active connection already dropped"),
+                        }
+                    }
+                    break;
+                };
             }
-            if stop.as_ref().load(Ordering::SeqCst) {
-                return Ok(());
-            };
+            info!("server stopped accepting connections");
+            return Ok(());
         });
 
         self.handle = Some(handle);
@@ -276,8 +313,8 @@ impl Server {
     use wruster::router;
     use wruster::router::HttpHandler;
     let routes = router::Router::new();
-    let handler: HttpHandler = Box::new(move |request: Request| {
-        let mut body = request.body.unwrap();
+    let handler: HttpHandler = Box::new(move |request: &mut Request| {
+        let body = &mut request.body.as_mut().unwrap();
         let mut name = String::new();
         body.content.read_to_string(&mut name).unwrap();
         let greetings = format!("hello {}!!", name);
@@ -294,16 +331,34 @@ impl Server {
     This function will return an error the error [`ErrorKind::Other`] if the server
     was not started.
     */
-    pub fn shutdown(self) -> ServerResult {
-        if self.handle.is_none() {
-            let err = Box::new(Error::new(ErrorKind::Other, "server not started"));
-            return Err(err);
-        }
+    pub fn shutdown(mut self) -> ServerResult {
+        let handle = match self.handle {
+            None => {
+                let err = Box::new(Error::new(ErrorKind::Other, "server not started"));
+                return Err(err);
+            }
+            Some(handle) => handle,
+        };
         self.stop.as_ref().store(true, Ordering::SeqCst);
         self.poller.unwrap().notify()?;
-        let handle = self.handle.unwrap();
-        handle.join().unwrap()?;
-        Ok(())
+
+        match handle.join() {
+            Ok(result) => match result {
+                Ok(()) => Ok(()),
+                Err(error) => {
+                    let err = Box::new(Error::new(ErrorKind::Other, error.to_string()));
+                    return Err(err);
+                }
+            },
+            Err(err) => {
+                error!("error waiting for stopping accepting connections {:?}", err);
+                let err = Box::new(Error::new(
+                    ErrorKind::Other,
+                    "error waiting for accepting connections",
+                ));
+                return Err(err);
+            }
+        }
     }
 
     /**
@@ -321,10 +376,10 @@ impl Server {
      use wruster::router;
      use wruster::router::HttpHandler;
      let routes = router::Router::new();
-     let handler: HttpHandler = Box::new(move |request: Request| {
-         let mut body = request.body.unwrap();
-         let mut name = String::new();
-         body.content.read_to_string(&mut name).unwrap();
+     let handler: HttpHandler = Box::new(move |request: &mut Request| {
+        let body = &mut request.body.as_mut().unwrap();
+        let mut name = String::new();
+        body.content.read_to_string(&mut name).unwrap();
          let greetings = format!("hello {}!!", name);
          Response::from_str(&greetings).unwrap()
      });
@@ -336,7 +391,7 @@ impl Server {
 
      # Errors
 
-     This function will return an error the error [`ErrorKind::Other`] if the server
+     This function will return the error [`ErrorKind::Other`] if the server
      was not started.
      */
     pub fn wait(self) -> ServerResult {
@@ -356,40 +411,46 @@ impl Default for Server {
     }
 }
 
-fn handle_busy(mut stream: net::TcpStream, timeouts: Timeouts, src_addr: SocketAddr) {
+fn handle_busy(stream: TrackedStream, timeouts: Timeouts, src_addr: SocketAddr) {
     debug!("sending too busy to {}", src_addr);
     let write_timeout = Some(timeouts.write_response_timeout);
     let read_timeout = Some(timeouts.read_request_timeout);
-    let mut timeout_stream = TimeoutStream::from(&mut stream, read_timeout, write_timeout);
+    let shutdown_stream = stream.clone();
+    let mut timeout_stream = TimeoutStream::from(stream, read_timeout, write_timeout);
     let mut resp = Response::from_status(StatusCode::ServiceUnavailable);
     if let Err(err) = resp.write(&mut timeout_stream) {
         error!("sending too busy to {}: {}", src_addr, err.to_string())
     }
-    if let Err(err) = stream.shutdown(net::Shutdown::Both) {
+    let s = &*shutdown_stream;
+    if let Err(err) = s.shutdown(net::Shutdown::Both) {
         error!("error closing connection with: {}, {}", src_addr, err);
     }
     debug!("connection with closed")
 }
 
 fn handle_conversation(
-    mut stream: net::TcpStream,
+    mut stream: TrackedStream,
     routes: Arc<Router>,
     timeouts: Timeouts,
     source_addr: SocketAddr,
 ) {
     debug!("handling conversation with {}", source_addr);
-    while handle_connection(
-        &mut stream,
-        Arc::clone(&routes),
-        source_addr,
-        timeouts.clone(),
-    ) {
+    let mut connection_open = true;
+    while connection_open {
+        let handle_stream = stream.clone();
+        connection_open = handle_connection(
+            handle_stream,
+            Arc::clone(&routes),
+            source_addr,
+            timeouts.clone(),
+        );
         if let Err(err) = stream.flush() {
             error!("error flushing to: {}, {}", source_addr, err);
             return;
         }
         debug!("connection flushed");
     }
+
     if let Err(err) = stream.shutdown(net::Shutdown::Both) {
         error!("error closing connection with: {}, {}", source_addr, err);
     }
@@ -397,7 +458,7 @@ fn handle_conversation(
 }
 
 fn handle_connection(
-    stream: &mut TcpStream,
+    stream: TrackedStream,
     routes: Arc<Router>,
     source_addr: SocketAddr,
     timeouts: Timeouts,
@@ -406,32 +467,42 @@ fn handle_connection(
     let read_timeout = Some(timeouts.read_request_timeout);
     let write_timeout = Some(timeouts.write_response_timeout);
 
-    let mut resp_stream = match stream.try_clone() {
-        Ok(stream) => stream,
-        Err(err) => {
-            error!("error cloning stream: {}", err.to_string());
-            return false;
-        }
-    };
+    let resp_stream = stream.clone();
+    let timeout_stream = TimeoutStream::from(stream, read_timeout, write_timeout);
 
-    let mut timeout_stream = TimeoutStream::from(stream, read_timeout, write_timeout);
-    let mut response = match Request::read_from(&mut timeout_stream) {
-        Ok(request) => {
-            connection_open = connection_persistent(&request);
-            run_action(request, routes)
+    let (request, mut response) = match Request::read_from(timeout_stream) {
+        Ok(mut request) => {
+            connection_open = is_connection_persistent(&request);
+            let response = run_action(&mut request, routes);
+            (Some(request), response)
         }
         Err(err) => match err {
-            errors::HttpError::Unknown(err) => {
+            HttpError::InvalidRequest(err) => {
                 error!("error reading request, error info: {}", err);
                 connection_open = false;
-                Response::from_status(StatusCode::BadRequest)
+                let response = Response::from_status(StatusCode::BadRequest);
+                (None, response)
             }
-            errors::HttpError::Timeout => return false,
-            errors::HttpError::ConnectionClosed => return false,
+            err => {
+                debug!("error reading request {:?}", err);
+                return false;
+            }
         },
     };
 
-    let mut timeout_stream = TimeoutStream::from(&mut resp_stream, read_timeout, write_timeout);
+    // Ensure the request body (if any) is read.
+    if let Some(mut request) = request {
+        let body = request.body.as_mut();
+        if let Some(body) = body {
+            if let Err(err) = body.ensure_read() {
+                error!("error reading request body, error info: {}", err);
+                return false;
+            }
+        }
+    }
+
+    // Write the response.
+    let mut timeout_stream = TimeoutStream::from(resp_stream, read_timeout, write_timeout);
     if let Err(err) = response.write(&mut timeout_stream) {
         error!(
             "error writing response to: {}, error info: {}",
@@ -442,8 +513,8 @@ fn handle_connection(
     connection_open
 }
 
-fn run_action(mut request: Request<'_>, routes: Arc<Router>) -> Response<'_> {
-    let req_path = PathBuf::from(request.uri);
+fn run_action(request: &mut Request, routes: Arc<Router>) -> Response {
+    let req_path = PathBuf::from(request.uri.clone());
     let normalized = match req_path.normalize() {
         Ok(path) => path,
         Err(err) => {
@@ -468,7 +539,7 @@ fn run_action(mut request: Request<'_>, routes: Arc<Router>) -> Response<'_> {
 /**
 Evaluates if a request requires a connection to be [persistent](https://httpwg.org/specs/rfc7230.html#rfc.section.6.3).
 */
-fn connection_persistent(request: &http::Request) -> bool {
+fn is_connection_persistent(request: &http::Request) -> bool {
     let value = match request.headers.get("Connection") {
         None => "".to_string(),
         Some(values) => values[0].to_lowercase(),

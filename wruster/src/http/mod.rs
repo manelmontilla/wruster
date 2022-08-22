@@ -14,20 +14,26 @@ pub mod headers;
 pub mod status;
 pub use self::status::StatusCode;
 
+mod version;
+pub use self::version::Version;
+
 use crate::errors::HttpError;
-use crate::errors::HttpError::{ConnectionClosed, Timeout, Unknown};
+use crate::errors::HttpError::{ConnectionClosed, InvalidRequest, Timeout, Unknown};
 
 use headers::*;
+
+/// Contains a HTTP client implementation.
+pub mod client;
 
 #[cfg(test)]
 mod tests;
 
-/// Defines the returned by the methods and functions of this module.
+/// Defines the results returned by the methods and functions of this module.
 pub type HttpResult<T> = Result<T, HttpError>;
 
 /// Represents a Http Request.
 #[derive(Debug)]
-pub struct Request<'a> {
+pub struct Request {
     /// The [``HttpMethod``] of the request.
     pub method: HttpMethod,
     /// The uri of the request.
@@ -37,10 +43,10 @@ pub struct Request<'a> {
     /// The headers of the request.
     pub headers: Headers,
     /// The body of the request, if any.
-    pub body: Option<Body<'a>>,
+    pub body: Option<Body>,
 }
 
-impl<'a> Request<'a> {
+impl Request {
     /**
     Reads a request from an HTTP message in a type implementing [`io::Read`] according to
     the spec: https://datatracker.ietf.org/doc/html/rfc7230.
@@ -54,7 +60,7 @@ impl<'a> Request<'a> {
     Returns a [``HttpError``] if there is any problem reading from ``from`` or the message
     does not conform to the spec: https://datatracker.ietf.org/doc/html/rfc7230.
     */
-    pub fn read_from<T: io::Read + 'a>(from: T) -> HttpResult<Request<'a>> {
+    pub fn read_from<T: io::Read + 'static>(from: T) -> HttpResult<Request> {
         debug!("parsing request");
         let mut reader = io::BufReader::new(from);
         let request_line = match HttpRequestLine::read_from(&mut reader) {
@@ -95,8 +101,132 @@ impl<'a> Request<'a> {
     Returns a [``HttpError``] if there is any problem reading from ``from`` or the message
     does not conform to the spec: https://datatracker.ietf.org/doc/html/rfc7230.
     */
-    pub fn read_from_str(from: &str) -> Result<Request<'_>, HttpError> {
-        Request::read_from(Cursor::new(from))
+    pub fn read_from_str(from: &str) -> Result<Request, HttpError> {
+        Request::read_from(Cursor::new(from.to_string()))
+    }
+
+    /// Converts a value implementing the [``IntoRequest``] trait
+    /// to a Request.
+    pub fn from<T>(f: T, mime_type: mime::Mime, method: HttpMethod, url: String) -> Self
+    where
+        T: IntoRequest,
+    {
+        IntoRequest::into(f, mime_type, method, url)
+    }
+
+    /**
+    Writes a [``Resquest``] to a type implementing the [``io::Write``] trait.
+
+    # Examples
+
+    TODO
+
+    # Errors
+
+    This function will return an error if there is any error writing
+    to the ``to`` paramerer.
+    */
+    pub fn write<T: io::Write>(mut self, to: &mut T) -> HttpResult<()> {
+        let mut start_line = HttpRequestLine {
+            method: self.method,
+            uri: self.uri,
+            version: self.version,
+        };
+
+        start_line.write(to)?;
+        if self.body.is_none() {
+            self.headers.add(Header {
+                name: String::from("Content-Length"),
+                value: String::from("0"),
+            })
+        }
+        self.headers.write(to)?;
+        match self.body {
+            Some(mut body) => body.write(to).map_err(HttpError::from),
+            None => Ok(()),
+        }
+    }
+
+    /**
+    Creates a [``Resquest``] from a given body, method and path.
+
+    # Examples
+
+    TODO
+
+    # Errors
+    */
+    pub fn from_body(body: Body, method: HttpMethod, path: &str) -> Self {
+        let mut headers = Headers::new();
+        if let Some(content_type) = body.content_type.clone() {
+            headers.add(Header {
+                name: "Content-Type".to_string(),
+                value: content_type.to_string(),
+            });
+        }
+        if body.content_length != 0 {
+            headers.add(Header {
+                name: "Content-Length".to_string(),
+                value: body.content_length.to_string(),
+            });
+        }
+        Request {
+            body: Some(body),
+            headers: headers,
+            method: method,
+            uri: path.to_string(),
+            version: Version::HTTP1_1.to_string(),
+        }
+    }
+
+    /**
+    Returns true if there is any [``Header``] with name collection and value ``keep-alive``
+
+    # Examples
+
+    TODO
+
+    */
+    pub fn is_connection_persistent(&self) -> bool {
+        let value = match self.headers.get("Connection") {
+            None => "".to_string(),
+            Some(values) => values[0].to_lowercase(),
+        };
+        if value == "close" {
+            return false;
+        }
+
+        if self.version == "HTTP/1.1" || self.version == "HTTP/2" {
+            return true;
+        };
+
+        if self.version == "HTTP/1.0" && value == "keep-alive" {
+            return true;
+        };
+        return false;
+    }
+}
+
+/// Converts an immutable reference to a Request given [``mime::Mime``] type, a
+/// [``HttpMethod``] and a url.
+pub trait IntoRequest {
+    /// Performs the conversion.
+    fn into(self, mime_type: mime::Mime, method: HttpMethod, url: String) -> Request;
+}
+
+impl<T> IntoRequest for T
+where
+    T: IntoBody,
+{
+    fn into(self, mime_type: mime::Mime, method: HttpMethod, url: String) -> Request {
+        let body = IntoBody::into(self, mime_type);
+        Request {
+            body: Some(body),
+            headers: Headers::new(),
+            method: method,
+            uri: url,
+            version: Version::HTTP1_1.to_string(),
+        }
     }
 }
 
@@ -113,23 +243,18 @@ impl HttpRequestLine {
         // https://www.w3.org/Protocols/rfc2616/rfc2616-sec5.html
 
         let mut method = Vec::new();
-        if let Err(err) = from.read_until(b' ', &mut method) {
-            let err = match err.kind() {
-                io::ErrorKind::WouldBlock => Err(Timeout),
-                _ => Err(Unknown(err.to_string())),
-            };
-            return err;
-        };
+        from.read_until(b' ', &mut method)
+            .map_err(HttpError::from)?;
         if method.is_empty() {
             return Err(ConnectionClosed);
         }
         if method.len() < 2 {
             let msg = format!("invalid request line {:?}", method);
-            return Err(Unknown(msg));
+            return Err(InvalidRequest(msg));
         };
         let method = String::from_utf8_lossy(&method[..method.len() - 1]);
         let method = match HttpMethod::from_str(&method) {
-            Err(err) => return Err(Unknown(err)),
+            Err(err) => return Err(InvalidRequest(err)),
             Ok(method) => method,
         };
 
@@ -138,21 +263,20 @@ impl HttpRequestLine {
             return Err(Unknown(err.to_string()));
         };
         if uri.len() < 2 {
-            return Err(Unknown(String::from("invalid request line")));
+            return Err(InvalidRequest("invalid request line".to_string()));
         };
 
         let uri = String::from_utf8_lossy(&uri[..uri.len() - 1]);
 
         let mut version = Vec::new();
-        if let Err(err) = from.read_until(b'\n', &mut version) {
-            return Err(Unknown(err.to_string()));
-        };
+        from.read_until(b'\n', &mut version)
+            .map_err(HttpError::from)?;
         if version.len() < 3 {
-            return Err(Unknown(String::from("invalid request line")));
+            return Err(InvalidRequest("invalid request line".to_string()));
         };
 
         if version[version.len() - 2] != (b'\r') {
-            return Err(Unknown(String::from("invalid request line")));
+            return Err(InvalidRequest("invalid request line".to_string()));
         }
         let version = String::from_utf8_lossy(&version[..version.len() - 2]);
 
@@ -162,19 +286,61 @@ impl HttpRequestLine {
             version: String::from(version),
         })
     }
+
+    pub fn write<T: io::Write>(&mut self, to: &mut T) -> HttpResult<()> {
+        // Request-Line   = Method SP Request-URI SP HTTP-Version CRLF
+        // https://www.w3.org/Protocols/rfc2616/rfc2616-sec5.html
+        let line = format!("{:#} {} {}\r\n", self.method, self.uri, self.version);
+        to.write(line.as_bytes()).map_err(HttpError::from)?;
+        Ok(())
+    }
 }
 
 /// Body holds the body part of an Http Message.
-pub struct Body<'a> {
+pub struct Body {
     /// The content type of body.
     pub content_type: Option<mime::Mime>,
     /// The length, in bytes, of the body.
     pub content_length: u64,
     /// The content of the body, if any.
-    pub content: Box<dyn Read + 'a>,
+    pub content: Box<dyn Read>,
+
+    bytes_read: u64,
 }
 
-impl<'a> Body<'a> {
+impl Body {
+    /**
+    Creates a new Body given a Reader over the content of the body, the content type and
+    the content length.
+
+    # Examples
+
+    ```
+    use std::io::Cursor;
+    use wruster::http::Body;
+
+    let content = "content";
+    let mut body = Body::new (
+        Some(mime::TEXT_PLAIN),
+        content.len() as u64,
+        Box::new(Cursor::new(content))
+    );
+    ```
+    */
+    pub fn new(
+        content_type: Option<mime::Mime>,
+        content_length: u64,
+        content: Box<dyn Read>,
+    ) -> Body {
+        let bytes_read = 0;
+        Body {
+            content_type,
+            content_length,
+            content,
+            bytes_read,
+        }
+    }
+
     /**
     Writes the content of body to a type implementing the [``io::Write``] trait.
 
@@ -185,11 +351,11 @@ impl<'a> Body<'a> {
     use wruster::http::Body;
 
     let content = "content";
-    let mut body = Body {
-        content: Box::new(Cursor::new(content)),
-        content_type: Some(mime::TEXT_PLAIN),
-        content_length: content.len() as u64,
-    };
+    let mut body = Body::new(
+        Some(mime::TEXT_PLAIN),
+        content.len() as u64,
+        Box::new(Cursor::new(content))
+    );
     let mut to: Vec<u8> = Vec::new();
     body.write(&mut to).unwrap();
     let got_content = String::from_utf8(to).unwrap();
@@ -201,7 +367,7 @@ impl<'a> Body<'a> {
     This function will return an error if there is any error writing
     to the ``to`` paramerer.
     */
-    pub fn write<T: io::Write>(&mut self, to: &mut T) ->  HttpResult<()> {
+    pub fn write<T: io::Write>(&mut self, to: &mut T) -> HttpResult<()> {
         let src = &mut self.content;
         if let Err(err) = io::copy(src, to) {
             return Err(HttpError::Unknown(err.to_string()));
@@ -227,10 +393,10 @@ impl<'a> Body<'a> {
     ``Transfer-Encoding`` header or if it contains more that one value a ``Content-Length``
     header.
     */
-    pub fn read_from<T: io::Read + 'a>(
+    pub fn read_from<T: io::Read + 'static>(
         from: T,
         headers: &Headers,
-    ) -> Result<Option<Body<'a>>, HttpError> {
+    ) -> Result<Option<Body>, HttpError> {
         if let Some(encoding) = headers.get("Transfer-Enconding") {
             // Transfer-Encoding entity is not supported.
             if encoding.len() != 1 {
@@ -286,16 +452,58 @@ impl<'a> Body<'a> {
             }
         };
         let c = from.take(len as u64);
+        let content = Box::new(c);
         let body = Body {
-            content: Box::new(c),
+            content: content,
             content_type,
             content_length: len as u64,
+            bytes_read: 0,
         };
         Ok(Some(body))
     }
+
+    /**
+    Ensures the content length specified in the body is read from the underlaying reader.
+    */
+    pub fn ensure_read(&mut self) -> Result<(), HttpError> {
+        if self.bytes_read == self.content_length {
+            return Ok(());
+        }
+        let n = self.content_length - self.bytes_read;
+        match io::copy(&mut self.content.by_ref().take(n), &mut io::sink()) {
+            Ok(_) => Ok(()),
+            Err(err) => Err(HttpError::from(err)),
+        }
+    }
+
+    /**
+    Creates a Body from value of a type implementing the trait [`IntoBody`]
+
+    # Examples
+
+    TODO
+    */
+    pub fn from<T>(f: T, mime_type: mime::Mime) -> Self
+    where
+        T: IntoBody,
+    {
+        IntoBody::into(f, mime_type)
+    }
 }
 
-impl fmt::Debug for Body<'_> {
+impl Read for Body {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        match self.content.read(buf) {
+            Ok(bytes_read) => {
+                self.bytes_read = self.bytes_read + bytes_read as u64;
+                Ok(bytes_read)
+            }
+            Err(err) => Err(err),
+        }
+    }
+}
+
+impl fmt::Debug for Body {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
@@ -305,18 +513,56 @@ impl fmt::Debug for Body<'_> {
     }
 }
 
+/// Used to convert an immutable reference to a Body.
+///
+/// # Examples
+///
+///  TODO
+pub trait IntoBody {
+    /// Performs the conversion.
+    fn into(self, mime_type: mime::Mime) -> Body;
+}
+
+impl IntoBody for String {
+    fn into(self, mime_type: mime::Mime) -> Body {
+        Body::new(
+            Some(mime_type),
+            self.len() as u64,
+            Box::new(Cursor::new(self)),
+        )
+    }
+}
+
+impl IntoBody for &str {
+    fn into(self, mime_type: mime::Mime) -> Body {
+        let content = self.to_string();
+        IntoBody::into(content, mime_type)
+    }
+}
+
+impl From<&str> for Body {
+    fn from(content: &str) -> Self {
+        let body = content.to_string();
+        Body::new(
+            Some(mime::TEXT_PLAIN),
+            body.len() as u64,
+            Box::new(Cursor::new(body)),
+        )
+    }
+}
+
 /// Represents a Http Response.
 #[derive(Debug)]
-pub struct Response<'a> {
+pub struct Response {
     /// The http [``StatusCode``] of the response.
     pub status: StatusCode,
     /// The [``Headers``] of the response.
     pub headers: Headers,
     /// The body, if any, of the response.
-    pub body: Option<Body<'a>>,
+    pub body: Option<Body>,
 }
 
-impl<'a> Response<'a> {
+impl Response {
     /**
     Writes a [``Response``] to a type implementing the [``io::Write``] trait.
 
@@ -327,12 +573,12 @@ impl<'a> Response<'a> {
     use wruster::http::headers::{Header, Headers};
     use wruster::http::{Body, Response, StatusCode};
 
-       let content = "#wruster";
-    let body = Body {
-    content: Box::new(Cursor::new(content)),
-    content_type: Some(mime::TEXT_PLAIN),
-    content_length: content.len() as u64,
-    };
+    let content = "#wruster";
+    let body = Body::new(
+        Some(mime::TEXT_PLAIN),
+        content.len() as u64,
+        Box::new(Cursor::new(content))
+    );
 
     let mut headers = Headers::new();
     headers.add(Header {
@@ -355,10 +601,12 @@ impl<'a> Response<'a> {
     to the ``to`` paramerer.
     */
     pub fn write<T: io::Write>(&mut self, to: &mut T) -> HttpResult<()> {
-        let payload = format!("HTTP/1.1 {:#}\r\n", self.status);
-        if let Err(err) = to.write(payload.as_bytes()) {
-           return Err(HttpError::Unknown(err.to_string()));
+        let mut start_line = HttpResponseLine {
+            http_version: Version::HTTP1_1.to_string(),
+            status_code: self.status.clone(),
+            reason_phrase: self.status.clone().into(),
         };
+        start_line.write(to)?;
         if self.body.is_none() {
             self.headers.add(Header {
                 name: String::from("Content-Length"),
@@ -366,14 +614,11 @@ impl<'a> Response<'a> {
             })
         }
         self.headers.write(to)?;
-        if self.body.is_none() {
-            return Ok(());
+        match self.body.as_mut() {
+            Some(body) => body.write(to).map_err(HttpError::from),
+            None => Ok(()),
         }
-        // TODO: handle possible error.
-        let body = self.body.as_mut().unwrap();
-        body.write(to)
     }
-
 
     /// Creates a Request with the given http [``StatusCode``].
     ///
@@ -384,7 +629,7 @@ impl<'a> Response<'a> {
     /// use wruster::http::status::StatusCode;
     /// let response = Response::from_status(StatusCode::OK);
     /// ```
-    pub fn from_status(status: StatusCode) -> Response<'a> {
+    pub fn from_status(status: StatusCode) -> Response {
         let headers = Headers::new();
         Response {
             status,
@@ -406,7 +651,7 @@ impl<'a> Response<'a> {
     Returns a [``HttpError``] if there is any problem reading from ``from`` or the message
     does not conform to the spec: https://datatracker.ietf.org/doc/html/rfc7230.
     */
-    pub fn read_from<T: io::Read + 'a>(from: T) -> Result<Response<'a>, HttpError> {
+    pub fn read_from<T: io::Read + 'static>(from: T) -> Result<Response, HttpError> {
         // https://www.w3.org/Protocols/rfc2616/rfc2616-sec6.html
         //    Status-Line
         //                    *(( general-header
@@ -416,7 +661,7 @@ impl<'a> Response<'a> {
         //                    [ message-body ]
         debug!("parsing response");
         let mut reader = io::BufReader::new(from);
-        let status_line = StatusLine::read_from(&mut reader)?;
+        let status_line = HttpResponseLine::read_from(&mut reader)?;
         debug!("response status line parsed: {:?}", status_line);
 
         let headers = Headers::read_from(&mut reader)?;
@@ -435,37 +680,38 @@ impl<'a> Response<'a> {
     }
 }
 
-impl<'a> FromStr for Response<'a> {
+impl<'a> FromStr for Response {
     type Err = Infallible;
-    fn from_str(content: &str) -> Result<Response<'a>, Infallible> {
+    fn from_str(content: &str) -> Result<Response, Infallible> {
         let content = Vec::from(content);
         let resp = Response {
             status: StatusCode::OK,
             headers: Headers::new(),
-            body: Some(Body {
-                content_length: content.len() as u64,
-                content_type: Some(mime::TEXT_PLAIN),
-                content: Box::new(Cursor::new(content)),
-            }),
+            body: Some(Body::new(
+                Some(mime::TEXT_PLAIN),
+                content.len() as u64,
+                Box::new(Cursor::new(content)),
+            )),
         };
         Ok(resp)
     }
 }
 
 #[derive(Debug)]
-struct StatusLine {
+struct HttpResponseLine {
     http_version: String,
     status_code: StatusCode,
+    #[allow(dead_code)]
     reason_phrase: String,
 }
 
-impl StatusLine {
-    fn read_from<T: io::Read>(from: &mut io::BufReader<T>) -> Result<StatusLine, HttpError> {
+impl HttpResponseLine {
+    fn read_from<T: io::Read>(from: &mut io::BufReader<T>) -> Result<HttpResponseLine, HttpError> {
         // Status-Line = HTTP-Version SP Status-Code SP Reason-Phrase CRLF
         let mut http_version = Vec::new();
         if let Err(err) = from.read_until(b' ', &mut http_version) {
             let err = match err.kind() {
-                io::ErrorKind::WouldBlock => Err(Timeout),
+                io::ErrorKind::TimedOut => Err(Timeout),
                 _ => Err(Unknown(err.to_string())),
             };
             return err;
@@ -501,7 +747,7 @@ impl StatusLine {
         };
         let reason_phrase =
             String::from_utf8_lossy(&reason_phrase[..reason_phrase.len() - 2]).to_string();
-        Ok(StatusLine {
+        Ok(HttpResponseLine {
             http_version,
             status_code,
             reason_phrase,
@@ -539,7 +785,18 @@ impl StatusLine {
         }
         Ok(())
     }
+    pub fn write<T: io::Write>(&mut self, to: &mut T) -> HttpResult<()> {
+        // status-line = HTTP-version SP status-code SP reason-phrase CRLF
+        // https://datatracker.ietf.org/doc/html/rfc7230#section-3.1.2
+        // let payload = format!("HTTP/1.1 {:#}\r\n", self.status);
+        let payload = format!("{} {}\r\n", self.http_version, self.status_code);
+        if let Err(err) = to.write(payload.as_bytes()) {
+            return Err(HttpError::Unknown(err.to_string()));
+        };
+        Ok(())
+    }
 }
+
 #[allow(missing_docs)]
 /// Contains a variant per each Http Method.
 #[derive(Debug, Copy, Clone)]

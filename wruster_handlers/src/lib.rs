@@ -1,10 +1,17 @@
+/**
+Contains a set of helpfull handlers, middlewares and utilities to create
+new handlers in a wruster web server.
+*/
 use std::fs;
 use std::io::BufReader;
 use std::{io, path::PathBuf};
 
-use crate::http::headers::{Header, Headers};
-use crate::http::{Body, Request, Response, StatusCode};
-use crate::router::HttpHandler;
+#[macro_use]
+extern crate log;
+
+use wruster::http::headers::{Header, Headers};
+use wruster::http::{self, Body, Request, Response, StatusCode};
+use wruster::router::HttpHandler;
 
 /**
 Implents a handler that serves the files in a directory tree.
@@ -13,9 +20,9 @@ Implents a handler that serves the files in a directory tree.
 
 ```no_run
 use wruster::router;
-use wruster::handlers::serve_static;
 use wruster::http;
 use wruster::Server;
+use wruster_handlers::serve_static;
 
 let addr = "localhost:8085";
 let dir = "./";
@@ -28,7 +35,7 @@ server.run(addr, routes).unwrap();
 server.wait().unwrap();
 ```
 */
-pub fn serve_static(dir: &str, request: &Request) -> Response<'static> {
+pub fn serve_static(dir: &str, request: &Request) -> Response {
     let base_path: PathBuf = PathBuf::from(dir).canonicalize().unwrap();
     let mut uri = request.uri.as_str();
     if uri.starts_with('/') {
@@ -61,7 +68,7 @@ pub fn serve_static(dir: &str, request: &Request) -> Response<'static> {
     };
     let mime_type = mime_guess::from_path(path).first_or_octet_stream();
     let mut headers = Headers::new();
-    let body = Box::new(BufReader::new(content));
+    let content = Box::new(BufReader::new(content));
     headers.add(Header {
         name: String::from("Content-Length"),
         value: metadata.len().to_string(),
@@ -70,14 +77,11 @@ pub fn serve_static(dir: &str, request: &Request) -> Response<'static> {
         name: String::from("Content-Type"),
         value: mime_type.to_string(),
     });
+    let body = Body::new(Some(mime_type), metadata.len(), content);
     Response {
         status: StatusCode::OK,
         headers,
-        body: Some(Body {
-            content_length: metadata.len(),
-            content_type: Some(mime_type),
-            content: body,
-        }),
+        body: Some(body),
     }
 }
 
@@ -90,10 +94,11 @@ the standard output with INFO level.
 ```no_run
 use std::str::FromStr;
 
-use wruster::handlers;
 use wruster::router;
 use wruster::Server;
 use wruster::http;
+
+use wruster_handlers::log_middleware;
 
 env_logger::init();
 let addr = "localhost:8085";
@@ -102,7 +107,7 @@ let handler: router::HttpHandler = Box::new(move |_| {
     let greetings = "hello!!";
     http::Response::from_str(&greetings).unwrap()
 });
-let handler = handlers::log_middleware(handler);
+let handler = log_middleware(handler);
 routes.add("/", http::HttpMethod::GET, handler);
 let mut server = Server::new();
 server.run(addr, routes).unwrap();
@@ -110,7 +115,7 @@ server.wait().unwrap();
 ```
 */
 pub fn log_middleware(handler: HttpHandler) -> HttpHandler {
-    Box::new(move |request: Request| {
+    Box::new(move |request: &mut Request| {
         info!("request {:?}", request);
         let response = handler(request);
         info!("response {:?}", response);

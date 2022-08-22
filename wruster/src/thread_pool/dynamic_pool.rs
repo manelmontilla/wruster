@@ -26,7 +26,7 @@ impl DynamicWorker {
         let initialized = Arc::new(AtomicBool::new(false));
         let t_initialized = Arc::clone(&initialized);
         let handle = std::thread::spawn(move || {
-            // When the woker is crearted it will execute, at least, one action
+            // When the worker is created it will execute, at least, one action
             // so we don't want to timeout waiting for it.
             t_initialized.store(true, Ordering::SeqCst);
             first_action();
@@ -174,7 +174,6 @@ mod tests {
         let (sender, receiver) = channel::<()>();
         let (started_sender, started_rcv) = channel::<()>();
         let action: Action = Box::new(move || {
-            println!("runing long task");
             started_sender.send(()).unwrap();
             receiver.recv().unwrap();
         });
@@ -238,7 +237,6 @@ mod tests {
         let (sender, receiver) = channel::<()>();
         let (started_sender, started_rcv) = channel::<()>();
         let action: Action = Box::new(move || {
-            println!("runing long task");
             started_sender.send(()).unwrap();
             receiver.recv().unwrap();
         });

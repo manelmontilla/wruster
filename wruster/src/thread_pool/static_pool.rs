@@ -132,7 +132,6 @@ mod tests {
         let (sender, receiver) = channel::<()>();
         let (worker_started_sender, worker_started_rcv) = channel::<()>();
         let action: Action = Box::new(move || {
-            println!("runing long task");
             worker_started_sender.send(()).unwrap();
             receiver.recv().unwrap();
         });

@@ -1,10 +1,25 @@
-use std::io;
+use std::io::{self, ErrorKind, Read, Write};
 use std::net::TcpStream;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
+
+use super::cancellable_stream::CancellableStream;
 
 pub trait Timeout {
     fn set_read_timeout(&self, dur: Option<Duration>) -> io::Result<()>;
     fn set_write_timeout(&self, dur: Option<Duration>) -> io::Result<()>;
+}
+
+impl Timeout for &TcpStream {
+    fn set_read_timeout(&self, dur: Option<Duration>) -> io::Result<()> {
+        let s = *self;
+        s.set_read_timeout(dur)
+    }
+
+    fn set_write_timeout(&self, dur: Option<Duration>) -> io::Result<()> {
+        let s = *self;
+        s.set_write_timeout(dur)
+    }
 }
 
 impl Timeout for TcpStream {
@@ -17,20 +32,78 @@ impl Timeout for TcpStream {
     }
 }
 
-pub struct TimeoutStream<'a, T: io::Read + io::Write + Timeout> {
-    stream: &'a mut T,
+impl Timeout for &CancellableStream {
+    fn set_read_timeout(&self, dur: Option<Duration>) -> io::Result<()> {
+        let s = *self;
+        s.set_read_timeout(dur)
+    }
+
+    fn set_write_timeout(&self, dur: Option<Duration>) -> io::Result<()> {
+        let s = *self;
+        s.set_write_timeout(dur)
+    }
+}
+
+impl Timeout for CancellableStream {
+    fn set_read_timeout(&self, dur: Option<Duration>) -> io::Result<()> {
+        self.set_read_timeout(dur)
+    }
+
+    fn set_write_timeout(&self, dur: Option<Duration>) -> io::Result<()> {
+        self.set_write_timeout(dur)
+    }
+}
+
+pub struct ArcStream(Arc<CancellableStream>);
+
+impl Timeout for &ArcStream {
+    fn set_read_timeout(&self, dur: Option<Duration>) -> io::Result<()> {
+        let s = &*self.0;
+        s.set_read_timeout(dur)
+    }
+
+    fn set_write_timeout(&self, dur: Option<Duration>) -> io::Result<()> {
+        let s = &*self.0;
+        s.set_write_timeout(dur)
+    }
+}
+
+impl Read for &ArcStream {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        let mut s = &*self.0;
+        s.read(buf)
+    }
+}
+
+impl Write for &ArcStream {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        let mut s = &*self.0;
+        s.write(buf)
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        let mut s = &*self.0;
+        s.flush()
+    }
+}
+
+pub struct TimeoutStream<T>
+where
+    T: Read + Write + Timeout,
+{
+    stream: T,
     read: Option<Duration>,
     write: Option<Duration>,
     ongoing_read: Option<Operation>,
     ongoing_write: Option<Operation>,
 }
 
-impl<'a, T> TimeoutStream<'a, T>
+impl<T> TimeoutStream<T>
 where
-    T: io::Read + io::Write + Timeout,
+    T: Read + Write + Timeout,
 {
     pub fn from(
-        from: &mut T,
+        from: T,
         read_timeout: Option<Duration>,
         write_timeout: Option<Duration>,
     ) -> TimeoutStream<T> {
@@ -44,15 +117,16 @@ where
     }
 }
 
-impl<'a, T> io::Read for TimeoutStream<'a, T>
+impl<T> Read for TimeoutStream<T>
 where
-    T: io::Read + io::Write + Timeout,
+    T: Read + Write + Timeout,
 {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         // If no timeout is defined for reading, we just pass through to the
         // underlaying reader.
+        let stream = &mut self.stream;
         let timeout = match self.read {
-            None => return self.stream.read(buf),
+            None => return stream.read(buf),
             Some(timeout) => timeout,
         };
         let read = match self.ongoing_read.as_mut() {
@@ -66,27 +140,37 @@ where
         };
         let next_timeout = read.next_timeout();
         if next_timeout.as_secs() == 0 {
-            return Err(io::Error::new(io::ErrorKind::WouldBlock, "time out"));
+            return Err(io::Error::from(io::ErrorKind::TimedOut));
         }
-        if let Err(err) = self.stream.set_read_timeout(Some(next_timeout)) {
+        let stream = &self.stream;
+        if let Err(err) = stream.set_read_timeout(Some(next_timeout)) {
             return io::Result::Err(err);
         }
         read.start();
-        let res = self.stream.read(buf);
+        let stream = &mut self.stream;
+        let res = stream.read(buf).map_err(|err| {
+            // REVIEW: In some cases a read operation over a stream returns
+            // WouldBlock instead of the expected TimedOut.
+            match err.kind() {
+                ErrorKind::WouldBlock => io::Error::from(ErrorKind::TimedOut),
+                _ => err,
+            }
+        });
         read.stop();
         res
     }
 }
 
-impl<'a, T> io::Write for TimeoutStream<'a, T>
+impl<T> io::Write for TimeoutStream<T>
 where
-    T: io::Read + io::Write + Timeout,
+    T: Read + Write + Timeout,
 {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         // If no timeout has set for write, we just pass through to the
         // underlaying writer.
+        let stream = &mut self.stream;
         let timeout = match self.write {
-            None => return self.stream.write(buf),
+            None => return stream.write(buf),
             Some(timeout) => timeout,
         };
         let write = match self.ongoing_write.as_mut() {
@@ -100,19 +184,27 @@ where
         };
         let next_timeout = write.next_timeout();
         if next_timeout.as_secs() == 0 {
-            return Err(io::Error::new(io::ErrorKind::WouldBlock, "time out"));
+            return Err(io::Error::from(io::ErrorKind::TimedOut));
         }
-        if let Err(err) = self.stream.set_write_timeout(Some(next_timeout)) {
+        if let Err(err) = stream.set_write_timeout(Some(next_timeout)) {
             return io::Result::Err(err);
         }
         write.start();
-        let res = self.stream.write(buf);
+        let res = stream.write(buf).map_err(|err| {
+            // REVIEW: In some cases a read operation over a stream returns
+            // WouldBlock instead of the expected TimedOut.
+            match err.kind() {
+                ErrorKind::WouldBlock => io::Error::from(ErrorKind::TimedOut),
+                _ => err,
+            }
+        });
         write.stop();
         res
     }
 
     fn flush(&mut self) -> io::Result<()> {
-        todo!()
+        let stream = &mut self.stream;
+        stream.flush()
     }
 }
 
@@ -171,8 +263,8 @@ mod tests {
         let read_timeout = Duration::from_secs(3);
         let expected_timeout = read_timeout.clone();
         let handle = thread::spawn(move || {
-            let (mut stream, _) = listener.accept().unwrap();
-            let mut tstream = TimeoutStream::from(&mut stream, Some(read_timeout), None);
+            let (stream, _) = listener.accept().unwrap();
+            let mut tstream = TimeoutStream::from(stream, Some(read_timeout), None);
             let mut reader = BufReader::new(&mut tstream);
             let mut content = Vec::new();
             reader.read_until(b' ', &mut content).unwrap();
@@ -191,10 +283,11 @@ mod tests {
         client.send("this should not get read".as_bytes()).unwrap();
         let (received, err) = handle.join().unwrap();
         assert_eq!(received, "test ".to_string());
-        assert_eq!(err.kind(), io::ErrorKind::WouldBlock);
+        assert_eq!(err.kind(), io::ErrorKind::TimedOut);
     }
 
     struct TcpClient {
+        #[allow(dead_code)]
         pub addr: String,
         stream: Option<TcpStream>,
     }

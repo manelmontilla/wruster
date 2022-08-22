@@ -54,12 +54,12 @@ fn server_handles_requests() {
         let mut content: Vec<u8> = Vec::new();
         request
             .body
+            .as_mut()
             .unwrap()
             .content
             .read_to_end(&mut content)
             .unwrap();
         let content = String::from_utf8_lossy(&content);
-        print!("content {}", content);
         if &content == "test" {
             Response::from_status(StatusCode::OK)
         } else {

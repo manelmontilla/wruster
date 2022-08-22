@@ -4,10 +4,10 @@ use std::fmt::Debug;
 use std::io;
 use std::io::prelude::*;
 
-use super::errors::HttpError::Unknown;
+use super::errors::HttpError::InvalidRequest;
 use super::errors::*;
-use super::MessageChar;
 use super::HttpResult;
+use super::MessageChar;
 
 #[derive(Debug)]
 /// Holds a collection of HTTP headers.
@@ -16,7 +16,6 @@ pub struct Headers {
 }
 
 impl Headers {
-
     /**
     Creates a new [`Headers`] struct.
 
@@ -180,11 +179,7 @@ impl Headers {
                 header.write(to)?
             }
         }
-
-        let written = to.write_all("\r\n".as_bytes());
-        if let Err(err) = written {
-             return Err(HttpError::Unknown(err.to_string()));
-        };
+        to.write_all("\r\n".as_bytes()).map_err(HttpError::from)?;
         Ok(())
     }
 }
@@ -195,7 +190,7 @@ impl Default for Headers {
     }
 }
 
- /// Represents an HTTP header.
+/// Represents an HTTP header.
 #[derive(Debug)]
 pub struct Header {
     /// The name of the header.
@@ -229,9 +224,8 @@ impl Header {
         let mut line = Vec::<u8>::new();
         loop {
             let mut header_chunk = Vec::<u8>::new();
-            if let Err(err) = from.read_until(b'\n', &mut header_chunk) {
-                return Err(Unknown(err.to_string()));
-            };
+            from.read_until(b'\n', &mut header_chunk)
+                .map_err(HttpError::from)?;
             line.append(&mut header_chunk);
             debug!("header chunk read: {}", String::from_utf8_lossy(&line));
             let len = line.len();
@@ -276,7 +270,7 @@ impl Header {
                 "invalid header name line: {}, missing header name",
                 String::from_utf8_lossy(line)
             );
-            return Err(Unknown(String::from("invalid header name line")));
+            return Err(InvalidRequest("invalid header name line".to_string()));
         };
         // After the token we MUST receive a colon.
         if line[i] != b':' {
@@ -284,7 +278,7 @@ impl Header {
                 "invalid header line: {}, missing semicolon",
                 String::from_utf8_lossy(line)
             );
-            return Err(Unknown(String::from("invalid header name line")));
+            return Err(InvalidRequest("invalid header name line".to_string()));
         };
         // The header value must have at least one octed.
         let mut header_value_start = i + 1;
@@ -294,7 +288,7 @@ impl Header {
                 "invalid header value line: {}",
                 String::from_utf8_lossy(line)
             );
-            return Err(Unknown(String::from("invalid header name value")));
+            return Err(InvalidRequest("invalid header name value".to_string()));
         };
         // We don't support folding so the field-value = field-content.
         let mut field_value = String::new();
@@ -313,7 +307,7 @@ impl Header {
                     c,
                     j
                 );
-                return Err(Unknown(String::from("invalid header name value")));
+                return Err(InvalidRequest("invalid header name value".to_string()));
             }
             field_value.push(c);
         }
@@ -358,19 +352,20 @@ impl Header {
         // field-name     = token
         let mut written = to.write_all(&self.name.as_bytes());
         if let Err(err) = written {
+            debug!("error writing Header: {:?}", err);
             return Err(HttpError::Unknown(err.to_string()));
         };
         written = to.write_all(": ".as_bytes());
         if let Err(err) = written {
-             return Err(HttpError::Unknown(err.to_string()));
+            return Err(HttpError::Unknown(err.to_string()));
         };
         written = to.write_all(self.value.as_bytes());
         if let Err(err) = written {
-             return Err(HttpError::Unknown(err.to_string()));
+            return Err(HttpError::Unknown(err.to_string()));
         };
         written = to.write_all("\r\n".as_bytes());
         if let Err(err) = written {
-             return Err(HttpError::Unknown(err.to_string()));
+            return Err(HttpError::Unknown(err.to_string()));
         };
         Ok(())
     }

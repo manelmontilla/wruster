@@ -28,7 +28,7 @@ use std::str::FromStr;
 use std::time::Duration;
 
 use log::LevelFilter;
-use wruster::handlers::log_middleware;
+use wruster_handlers::log_middleware;
 use wruster::http;
 use wruster::http::Response;
 use wruster::router;

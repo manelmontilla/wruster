@@ -3,7 +3,6 @@ use std::process;
 use std::str::FromStr;
 
 use log::LevelFilter;
-use wruster::handlers::log_middleware;
 use wruster::http;
 use wruster::http::Response;
 use wruster::router;
@@ -16,9 +15,7 @@ extern crate log;
 fn main() {
     Builder::new().filter_level(LevelFilter::Info).init();
     let routes = router::Router::new();
-    let handler: HttpHandler = log_middleware(Box::new(move |_| {
-        Response::from_str("hellow world").unwrap()
-    }));
+    let handler: HttpHandler = Box::new(move |_| Response::from_str("hellow world").unwrap());
     routes.add("/", http::HttpMethod::GET, handler);
     let mut server = Server::new();
     if let Err(err) = server.run("127.0.0.1:8082", routes) {
