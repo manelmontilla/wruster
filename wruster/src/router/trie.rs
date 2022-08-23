@@ -193,6 +193,12 @@ mod tests {
 
         let value = root.get_value_prefix("/a/b/c/d".as_bytes());
         assert_eq!(value.unwrap(), "action for route /a/b/c/d");
+
+        let value = root.get_value_prefix("/a/b/c/d/e".as_bytes());
+        assert_eq!(value.unwrap(), "action for route /a/b/c/d");
+
+        let value = root.get_value_prefix("/".as_bytes());
+        assert!(value.is_none());
     }
 
     #[test]
