@@ -115,7 +115,7 @@ impl Request {
     }
 
     /**
-    Writes a [``Resquest``] to a type implementing the [``io::Write``] trait.
+    Writes a [``Request``] to a type implementing the [``io::Write``] trait.
 
     # Examples
 
@@ -148,7 +148,7 @@ impl Request {
     }
 
     /**
-    Creates a [``Resquest``] from a given body, method and path.
+    Creates a [``Request``] from a given body, method and path.
 
     # Examples
 

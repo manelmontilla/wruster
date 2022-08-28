@@ -60,11 +60,11 @@ impl Headers {
 
     /**
     Reads the headers from an HTTP message in a [`io::BufReader`] according to
-    the spec: https://datatracker.ietf.org/doc/html/rfc7230.
+    the spec: <https://datatracker.ietf.org/doc/html/rfc7230>.
 
     # Errors
 
-    Returns a [`HttpError`] if the header does not conform to the spec: https://datatracker.ietf.org/doc/html/rfc7230
+    Returns a [`HttpError`] if the header does not conform to the spec: <https://datatracker.ietf.org/doc/html/rfc7230>
     or there is any problem reading from the ``to``parameter.
     */
     pub fn read_from<T: io::Read>(from: &mut io::BufReader<T>) -> Result<Headers, HttpError> {
@@ -140,7 +140,7 @@ impl Headers {
 
     /**
     Writes the headers to a type implementing [``io::Write``]
-    according to the spec: https://datatracker.ietf.org/doc/html/rfc7230.
+    according to the spec: <https://datatracker.ietf.org/doc/html/rfc7230>.
 
      # Examples
     ```
@@ -202,7 +202,7 @@ pub struct Header {
 impl Header {
     /**
     Reads an header from an HTTP message in a [`io::BufReader`] according to
-    the spec: https://datatracker.ietf.org/doc/html/rfc7230.
+    the spec: <https://datatracker.ietf.org/doc/html/rfc7230>.
 
     # Examples
 
@@ -211,7 +211,7 @@ impl Header {
     # Errors
 
     Returns a [`HttpError`] if the header does not conform to the spec:
-    https://datatracker.ietf.org/doc/html/rfc7230.
+    <https://datatracker.ietf.org/doc/html/rfc7230>.
     */
     pub fn read_from<T: io::Read>(
         from: &mut io::BufReader<T>,
