@@ -225,7 +225,7 @@ impl Server {
 
         info!("listening on {}", &addr);
         let routes = Arc::new(routes);
-        let mut pool = thread_pool::Pool::new(4, 20);
+        let mut pool = thread_pool::Pool::new(4, 100);
         let stop = Arc::clone(&self.stop);
         let timeouts = self.timeouts.clone();
         let active_streams = TrackedStreamList::new();
