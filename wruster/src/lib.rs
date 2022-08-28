@@ -44,10 +44,10 @@ fn main() {
 
 use std::error::Error as StdError;
 use std::io::{Error, ErrorKind};
-use std::net::{SocketAddr, TcpStream};
+use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 use std::thread::JoinHandle;
 use std::{io::Write, time};
 use std::{net, thread};
@@ -331,7 +331,7 @@ impl Server {
     This function will return an error the error [`ErrorKind::Other`] if the server
     was not started.
     */
-    pub fn shutdown(mut self) -> ServerResult {
+    pub fn shutdown(self) -> ServerResult {
         let handle = match self.handle {
             None => {
                 let err = Box::new(Error::new(ErrorKind::Other, "server not started"));

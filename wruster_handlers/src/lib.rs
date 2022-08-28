@@ -10,7 +10,7 @@ use std::{io, path::PathBuf};
 extern crate log;
 
 use wruster::http::headers::{Header, Headers};
-use wruster::http::{self, Body, Request, Response, StatusCode};
+use wruster::http::{Body, Request, Response, StatusCode};
 use wruster::router::HttpHandler;
 
 /**
