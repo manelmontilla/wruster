@@ -225,7 +225,9 @@ impl Server {
 
         info!("listening on {}", &addr);
         let routes = Arc::new(routes);
-        let mut pool = thread_pool::Pool::new(4, 100);
+        let execunits = thread::available_parallelism().unwrap();
+        info!("system reported {} available execution units", execunits);
+        let mut pool = thread_pool::Pool::new(execunits.into(), 100);
         let stop = Arc::clone(&self.stop);
         let timeouts = self.timeouts.clone();
         let active_streams = TrackedStreamList::new();
@@ -328,7 +330,7 @@ impl Server {
 
     # Errors
 
-    This function will return an error the error [`ErrorKind::Other`] if the server
+    This function will return an error type [`ErrorKind::Other`] if the server
     was not started.
     */
     pub fn shutdown(self) -> ServerResult {
