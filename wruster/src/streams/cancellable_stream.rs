@@ -1,4 +1,4 @@
-use polling::Event;
+use polling::{Event, Source};
 use std::io::Read;
 use std::io::{self, Write};
 use std::net::{Shutdown, TcpStream};
@@ -6,8 +6,62 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{atomic, Arc, RwLock};
 use std::time::Duration;
 
+pub trait BaseStream {
+    fn set_nonblocking(&self, nonblocking: bool) -> io::Result<()>;
+    fn shutdown(&self, how: Shutdown) -> io::Result<()>;
+    fn set_read_timeout(&self, dur: Option<Duration>) -> io::Result<()>;
+    fn set_write_timeout(&self, dur: Option<Duration>) -> io::Result<()>;
+    fn as_raw(&self) -> std::os::unix::prelude::RawFd;
+    fn write_buf(&self, buf: &[u8]) -> io::Result<usize>;
+    fn read_buf(&self, buf: &mut [u8]) -> io::Result<usize>;
+    fn flush_data(&self) -> io::Result<()>;
+}
+
+pub trait Stream: Send + Sync + BaseStream {}
+
+impl BaseStream for TcpStream {
+    fn set_nonblocking(&self, nonblocking: bool) -> io::Result<()> {
+        self.set_nonblocking(nonblocking)
+    }
+
+    fn shutdown(&self, how: Shutdown) -> io::Result<()> {
+        self.shutdown(how)
+    }
+
+    fn set_read_timeout(&self, dur: Option<Duration>) -> io::Result<()> {
+        self.set_read_timeout(dur)
+    }
+
+    fn set_write_timeout(&self, dur: Option<Duration>) -> io::Result<()> {
+        self.set_write_timeout(dur)
+    }
+
+    fn as_raw(&self) -> std::os::unix::prelude::RawFd {
+        self.raw()
+    }
+
+    fn write_buf(&self, buf: &[u8]) -> io::Result<usize> {
+        let mut s = self;
+        <&Self as Write>::write(&mut s, buf)
+    }
+
+    fn read_buf(&self, buf: &mut [u8]) -> io::Result<usize> {
+        let mut s = self;
+        <&Self as Read>::read(&mut s, buf)
+    }
+
+    fn flush_data(&self) -> io::Result<()> {
+        let mut s = self;
+        <&Self as Write>::flush(&mut s)
+    }
+
+}
+
+impl Stream for TcpStream {}
+
+
 pub struct CancellableStream {
-    stream: TcpStream,
+    stream: Box<dyn Stream>,
     poller: Arc<polling::Poller>,
     done: AtomicBool,
     read_timeout: RwLock<Option<Duration>>,
@@ -15,13 +69,13 @@ pub struct CancellableStream {
 }
 
 impl CancellableStream {
-    pub fn new(stream: TcpStream) -> io::Result<CancellableStream> {
+    pub fn new(stream: Box<dyn Stream>) -> io::Result<CancellableStream> {
         let poller = Arc::new(polling::Poller::new()?);
         stream.set_nonblocking(true)?;
         let read_timeout = RwLock::new(None);
         let write_timeout = RwLock::new(None);
         let done = atomic::AtomicBool::new(false);
-        poller.add(&stream, Event::all(1))?;
+        poller.add(&stream.as_raw(), Event::all(1))?;
         return Ok(CancellableStream {
             stream,
             done,
@@ -53,7 +107,7 @@ impl CancellableStream {
     }
 
     fn read_int(&self, buf: &mut [u8]) -> io::Result<usize> {
-        self.poller.modify(&self.stream, Event::readable(1))?;
+        self.poller.modify(&self.stream.as_raw(), Event::readable(1))?;
         let mut events = Vec::new();
         let timeout = &self.read_timeout.write().unwrap().clone();
         let mut bytes_read = 0;
@@ -76,7 +130,7 @@ impl CancellableStream {
             }
             let read_buf = &mut buf[bytes_read..];
             let mut s = &self.stream;
-            match s.read(read_buf) {
+            match s.read_buf(read_buf) {
                 Ok(0) if self.done.load(Ordering::SeqCst) => {
                     return Err(io::Error::from(io::ErrorKind::NotConnected))
                 }
@@ -96,7 +150,7 @@ impl CancellableStream {
     }
 
     fn write_int(&self, buf: &[u8]) -> io::Result<usize> {
-        self.poller.modify(&self.stream, Event::writable(1))?;
+        self.poller.modify(&self.stream.as_raw(), Event::writable(1))?;
         let mut events = Vec::new();
         let timeout = &self.write_timeout.write().unwrap().clone();
         let mut bytes_written = 0;
@@ -120,7 +174,7 @@ impl CancellableStream {
                 }
                 let write_buf = &buf[bytes_written..];
                 let mut s = &self.stream;
-                match s.write(write_buf) {
+                match s.write_buf(write_buf) {
                     Ok(n) => bytes_written = bytes_written + n,
                     Err(err) if err.kind() == io::ErrorKind::WouldBlock => continue,
                     Err(err) => {
@@ -150,8 +204,7 @@ impl io::Write for &CancellableStream {
     }
 
     fn flush(&mut self) -> io::Result<()> {
-        let mut s = &self.stream;
-        s.flush()
+         self.stream.flush_data()
     }
 }
 
@@ -169,7 +222,7 @@ impl io::Write for CancellableStream {
     }
 
     fn flush(&mut self) -> io::Result<()> {
-        self.stream.flush()
+        self.stream.flush_data()
     }
 }
 
@@ -189,6 +242,7 @@ mod tests {
         let listener = TcpListener::bind(addr.clone()).unwrap();
         let handle = thread::spawn(move || {
             let (stream, _) = listener.accept().unwrap();
+            let stream = Box::new(stream);
             let cstream = Arc::new(CancellableStream::new(stream).unwrap());
             let cstream2 = Arc::clone(&cstream);
             let m = AtomicBool::new(true);
@@ -229,6 +283,7 @@ mod tests {
         let listener = TcpListener::bind(addr.clone()).unwrap();
         let handle = thread::spawn(move || {
             let (stream, _) = listener.accept().unwrap();
+            let stream = Box::new(stream);
             let mut cstream = CancellableStream::new(stream).unwrap();
             let mut reader = BufReader::new(&mut cstream);
             let mut content = Vec::new();
@@ -252,6 +307,7 @@ mod tests {
         let expected_timeout = read_timeout.clone();
         let handle = thread::spawn(move || {
             let (stream, _) = listener.accept().unwrap();
+            let stream = Box::new(stream);
             let mut cstream = CancellableStream::new(stream).unwrap();
             cstream.set_read_timeout(Some(expected_timeout)).unwrap();
             let mut reader = BufReader::new(&mut cstream);
@@ -276,6 +332,7 @@ mod tests {
         let server_data = data.clone();
         let handle = thread::spawn(move || {
             let (stream, _) = listener.accept().unwrap();
+            let stream = Box::new(stream);
             let mut cstream = CancellableStream::new(stream).unwrap();
             let data = server_data.as_bytes();
             cstream.write(&data)

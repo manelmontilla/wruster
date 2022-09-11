@@ -249,7 +249,7 @@ impl Server {
                     info!("accepting connection from {}", src_addr);
                     let cconfig = Arc::clone(&routes);
                     let action_timeouts = timeouts.clone();
-
+                    let stream = Box::new(stream);
                     let action_stream = match CancellableStream::new(stream) {
                         Ok(stream) => stream,
                         Err(err) => {

@@ -173,6 +173,7 @@ mod test {
         let read_timeout = Duration::from_secs(3);
         let handle = thread::spawn(move || {
             let (stream, _) = listener.accept().unwrap();
+            let stream = Box::new(stream);
             let cstream = CancellableStream::new(stream).unwrap();
             let track_list = TrackedStreamList::new();
             let stream_tracked = TrackedStreamList::track(&track_list, cstream);
