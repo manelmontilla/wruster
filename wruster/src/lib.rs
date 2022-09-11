@@ -67,6 +67,7 @@ use http::*;
 use polling::{Event, Poller};
 use router::{Normalize, Router};
 
+use streams::cancellable_stream::BaseStream;
 use streams::timeout_stream::TimeoutStream;
 use streams::TrackedStream;
 
@@ -249,7 +250,6 @@ impl Server {
                     info!("accepting connection from {}", src_addr);
                     let cconfig = Arc::clone(&routes);
                     let action_timeouts = timeouts.clone();
-                    let stream = Box::new(stream);
                     let action_stream = match CancellableStream::new(stream) {
                         Ok(stream) => stream,
                         Err(err) => {
@@ -413,7 +413,10 @@ impl Default for Server {
     }
 }
 
-fn handle_busy(stream: TrackedStream, timeouts: Timeouts, src_addr: SocketAddr) {
+fn handle_busy<T>(stream: TrackedStream<T>, timeouts: Timeouts, src_addr: SocketAddr)
+where
+    T: BaseStream,
+{
     debug!("sending too busy to {}", src_addr);
     let write_timeout = Some(timeouts.write_response_timeout);
     let read_timeout = Some(timeouts.read_request_timeout);
@@ -430,12 +433,14 @@ fn handle_busy(stream: TrackedStream, timeouts: Timeouts, src_addr: SocketAddr) 
     debug!("connection with closed")
 }
 
-fn handle_conversation(
-    mut stream: TrackedStream,
+fn handle_conversation<T>(
+    mut stream: TrackedStream<T>,
     routes: Arc<Router>,
     timeouts: Timeouts,
     source_addr: SocketAddr,
-) {
+) where
+    T: BaseStream + 'static,
+{
     debug!("handling conversation with {}", source_addr);
     let mut connection_open = true;
     while connection_open {
@@ -459,12 +464,15 @@ fn handle_conversation(
     debug!("connection closed")
 }
 
-fn handle_connection(
-    stream: TrackedStream,
+fn handle_connection<T>(
+    stream: TrackedStream<T>,
     routes: Arc<Router>,
     source_addr: SocketAddr,
     timeouts: Timeouts,
-) -> bool {
+) -> bool
+where
+    T: BaseStream + 'static,
+{
     let connection_open: bool;
     let read_timeout = Some(timeouts.read_request_timeout);
     let write_timeout = Some(timeouts.write_response_timeout);

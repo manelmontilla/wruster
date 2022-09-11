@@ -15,15 +15,21 @@ mod test_utils;
 
 use timeout_stream::Timeout;
 
-use self::cancellable_stream::CancellableStream;
+use self::cancellable_stream::{BaseStream, CancellableStream};
 
-pub struct ObservedStream {
-    observed: CancellableStream,
-    parent: Option<(usize, Weak<TrackedStreamList>)>,
+pub struct ObservedStream<T>
+where
+    T: BaseStream,
+{
+    observed: CancellableStream<T>,
+    parent: Option<(usize, Weak<TrackedStreamList<T>>)>,
 }
 
-impl ObservedStream {
-    pub fn new(observed: CancellableStream) -> ObservedStream {
+impl<T> ObservedStream<T>
+where
+    T: BaseStream,
+{
+    pub fn new(observed: CancellableStream<T>) -> ObservedStream<T> {
         ObservedStream {
             observed,
             parent: None,
@@ -31,7 +37,10 @@ impl ObservedStream {
     }
 }
 
-impl Drop for ObservedStream {
+impl<T> Drop for ObservedStream<T>
+where
+    T: BaseStream,
+{
     fn drop(&mut self) {
         let parent = match &self.parent {
             Some(it) => it,
@@ -44,53 +53,77 @@ impl Drop for ObservedStream {
     }
 }
 
-impl Deref for ObservedStream {
-    type Target = CancellableStream;
+impl<T> Deref for ObservedStream<T>
+where
+    T: BaseStream,
+{
+    type Target = CancellableStream<T>;
 
     fn deref(&self) -> &Self::Target {
         &self.observed
     }
 }
 
-impl DerefMut for ObservedStream {
+impl<T> DerefMut for ObservedStream<T>
+where
+    T: BaseStream,
+{
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.observed
     }
 }
 
-impl From<CancellableStream> for ObservedStream {
-    fn from(it: CancellableStream) -> Self {
+impl<T> From<CancellableStream<T>> for ObservedStream<T>
+where
+    T: BaseStream,
+{
+    fn from(it: CancellableStream<T>) -> Self {
         ObservedStream::new(it)
     }
 }
 
-pub struct TrackedStream {
-    stream: Arc<ObservedStream>,
+pub struct TrackedStream<T>
+where
+    T: BaseStream,
+{
+    stream: Arc<ObservedStream<T>>,
 }
 
-impl Clone for TrackedStream {
+impl<T> Clone for TrackedStream<T>
+where
+    T: BaseStream,
+{
     fn clone(&self) -> Self {
         let stream = Arc::clone(&self.stream);
         Self { stream }
     }
 }
 
-impl Deref for TrackedStream {
-    type Target = ObservedStream;
+impl<T> Deref for TrackedStream<T>
+where
+    T: BaseStream,
+{
+    type Target = ObservedStream<T>;
 
     fn deref(&self) -> &Self::Target {
         &self.stream
     }
 }
 
-impl Read for TrackedStream {
+impl<T> Read for TrackedStream<T>
+where
+    T: BaseStream,
+{
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         let mut s = &self.stream.observed;
         s.read(buf)
     }
 }
 
-impl Write for TrackedStream {
+impl<T> Write for TrackedStream<T>
+where
+    T: BaseStream,
+{
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         let mut s = &self.stream.observed;
         s.write(buf)
@@ -102,7 +135,10 @@ impl Write for TrackedStream {
     }
 }
 
-impl Timeout for TrackedStream {
+impl<T> Timeout for TrackedStream<T>
+where
+    T: BaseStream,
+{
     fn set_read_timeout(&self, dur: Option<std::time::Duration>) -> io::Result<()> {
         self.stream.set_read_timeout(dur)
     }
@@ -112,14 +148,20 @@ impl Timeout for TrackedStream {
     }
 }
 
-pub struct TrackedStreamList {
-    items: RwLock<HashMap<usize, Weak<ObservedStream>>>,
+pub struct TrackedStreamList<T>
+where
+    T: BaseStream,
+{
+    items: RwLock<HashMap<usize, Weak<ObservedStream<T>>>>,
     next_key: AtomicUsize,
 }
 
-impl TrackedStreamList {
-    pub fn new() -> Arc<TrackedStreamList> {
-        let items = HashMap::<usize, Weak<ObservedStream>>::new();
+impl<T> TrackedStreamList<T>
+where
+    T: BaseStream,
+{
+    pub fn new() -> Arc<TrackedStreamList<T>> {
+        let items = HashMap::<usize, Weak<ObservedStream<T>>>::new();
         let list = TrackedStreamList {
             items: RwLock::new(items),
             next_key: AtomicUsize::new(0),
@@ -127,7 +169,10 @@ impl TrackedStreamList {
         Arc::new(list)
     }
 
-    pub fn track(list: &Arc<TrackedStreamList>, stream: CancellableStream) -> TrackedStream {
+    pub fn track(
+        list: &Arc<TrackedStreamList<T>>,
+        stream: CancellableStream<T>,
+    ) -> TrackedStream<T> {
         let mut stream = ObservedStream::new(stream);
         let parent = Arc::downgrade(list);
         let key = list.next_key.fetch_add(1, Ordering::SeqCst);
@@ -147,7 +192,7 @@ impl TrackedStreamList {
         items.remove(&key);
     }
 
-    pub fn drain(&self) -> Vec<Weak<ObservedStream>> {
+    pub fn drain(&self) -> Vec<Weak<ObservedStream<T>>> {
         let mut items = self.items.write().unwrap();
         items.drain().map(|x| x.1).collect()
     }
@@ -173,7 +218,6 @@ mod test {
         let read_timeout = Duration::from_secs(3);
         let handle = thread::spawn(move || {
             let (stream, _) = listener.accept().unwrap();
-            let stream = Box::new(stream);
             let cstream = CancellableStream::new(stream).unwrap();
             let track_list = TrackedStreamList::new();
             let stream_tracked = TrackedStreamList::track(&track_list, cstream);

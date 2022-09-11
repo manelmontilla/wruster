@@ -3,7 +3,7 @@ use std::net::TcpStream;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use super::cancellable_stream::CancellableStream;
+use super::cancellable_stream::{BaseStream, CancellableStream};
 
 pub trait Timeout {
     fn set_read_timeout(&self, dur: Option<Duration>) -> io::Result<()>;
@@ -32,7 +32,10 @@ impl Timeout for TcpStream {
     }
 }
 
-impl Timeout for &CancellableStream {
+impl<T> Timeout for &CancellableStream<T>
+where
+    T: BaseStream,
+{
     fn set_read_timeout(&self, dur: Option<Duration>) -> io::Result<()> {
         let s = *self;
         s.set_read_timeout(dur)
@@ -44,7 +47,10 @@ impl Timeout for &CancellableStream {
     }
 }
 
-impl Timeout for CancellableStream {
+impl<T> Timeout for CancellableStream<T>
+where
+    T: BaseStream,
+{
     fn set_read_timeout(&self, dur: Option<Duration>) -> io::Result<()> {
         self.set_read_timeout(dur)
     }
@@ -54,9 +60,14 @@ impl Timeout for CancellableStream {
     }
 }
 
-pub struct ArcStream(Arc<CancellableStream>);
+pub struct ArcStream<T>(Arc<CancellableStream<T>>)
+where
+    T: BaseStream;
 
-impl Timeout for &ArcStream {
+impl<T> Timeout for &ArcStream<T>
+where
+    T: BaseStream,
+{
     fn set_read_timeout(&self, dur: Option<Duration>) -> io::Result<()> {
         let s = &*self.0;
         s.set_read_timeout(dur)
@@ -68,14 +79,20 @@ impl Timeout for &ArcStream {
     }
 }
 
-impl Read for &ArcStream {
+impl<T> Read for &ArcStream<T>
+where
+    T: BaseStream,
+{
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         let mut s = &*self.0;
         s.read(buf)
     }
 }
 
-impl Write for &ArcStream {
+impl<T> Write for &ArcStream<T>
+where
+    T: BaseStream,
+{
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         let mut s = &*self.0;
         s.write(buf)
