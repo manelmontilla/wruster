@@ -211,4 +211,19 @@ mod tests {
         resp_body.write(&mut content).unwrap();
         assert_eq!(Vec::from("content"), content);
     }
+
+    #[test]
+    fn routes_disctinct_method_same_path() {
+        let routes = Router::new();
+        let action_body = |_: &mut Request| unimplemented!();
+        let action: Box<dyn Fn(&mut Request) -> Response + Sync + Send> =
+            Box::new(action_body.clone());
+        routes.add("/a/b", HttpMethod::GET, action);
+        let action: Box<dyn Fn(&mut Request) -> Response + Sync + Send> = Box::new(action_body);
+        routes.add("/a/b", HttpMethod::POST, action);
+        _ = routes.get_prefix("/a/b".into(), HttpMethod::GET).unwrap();
+        _ = routes
+            .get_prefix("/a/b/c".into(), HttpMethod::POST)
+            .unwrap();
+    }
 }
