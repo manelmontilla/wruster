@@ -815,7 +815,7 @@ pub enum HttpMethod {
 
 impl HttpMethod {
     /// The [``HttpMethod``] variants are represented using a [``u16``], this
-    /// methods returns the variant with the highest value.
+    /// method returns the variant with the highest value.
     pub fn get_last() -> HttpMethod {
         Self::PATCH
     }
