@@ -3,5 +3,6 @@
 members = [
 "wruster",
 "wrustatic",
-"wruster_handlers"
+"wruster_handlers",
+"wrusdummy"
 ]

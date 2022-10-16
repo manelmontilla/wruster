@@ -1,4 +1,4 @@
-use std::io;
+use std::io::{self, BufReader};
 use std::io::{prelude::*, Cursor};
 
 use std::convert::Infallible;
@@ -21,6 +21,7 @@ use crate::errors::HttpError;
 use crate::errors::HttpError::{ConnectionClosed, InvalidRequest, Timeout, Unknown};
 
 use headers::*;
+use mime::Mime;
 
 /// Contains a HTTP client implementation.
 pub mod client;
@@ -635,6 +636,31 @@ impl Response {
             status,
             headers,
             body: None,
+        }
+    }
+    /// Creates a Request with the given a content and mime type.
+    ///
+    /// # Examples
+    /// TODO
+    ///
+    pub fn from_content<T: Read + 'static>(content: T, length: u64, mime: Mime) -> Response {
+        let mut headers = Headers::new();
+        let reader = BufReader::new(content.take(length));
+        let content = Box::new(reader);
+        headers.add(Header {
+            name: String::from("Content-Length"),
+            value: length.to_string(),
+        });
+        headers.add(Header {
+            name: String::from("Content-Type"),
+            value: mime.to_string(),
+        });
+
+        let body = Body::new(Some(mime), length, content);
+        Response {
+            status: StatusCode::OK,
+            headers,
+            body: Some(body),
         }
     }
 

@@ -221,6 +221,28 @@ fn http_response_no_headers_no_body() {
 }
 
 #[test]
+fn http_response_from_content() {
+    let content = "test content";
+    let response =
+        Response::from_content(content.as_bytes(), content.len() as u64, mime::TEXT_PLAIN);
+    let got_headers = response.headers;
+    let mut want_headers = Headers::new();
+    want_headers.add(Header {
+        name: "Content-Length".to_string(),
+        value: content.len().to_string(),
+    });
+    want_headers.add(Header {
+        name: "Content-Type".to_string(),
+        value: mime::TEXT_PLAIN.to_string(),
+    });
+
+    assert_eq!(
+        Vec::from_iter(got_headers.iter()).sort(),
+        Vec::from_iter(want_headers.iter()).sort(),
+    );
+}
+
+#[test]
 fn http_body_read_from_invalid_content_type() {
     let from = Cursor::new("test");
     let mut headers = Headers::new();
