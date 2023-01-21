@@ -2,15 +2,26 @@
 
 [![Rust](https://github.com/manelmontilla/wruster/actions/workflows/ci.yml/badge.svg)](https://github.com/manelmontilla/wruster/actions/workflows/ci.yml)
 
-Wruster is a experimental web server.
+Wruster is a web server intended to experiment and learn with backend
+components at the HTTP protocol level.
 
-Even though it´s a fully functional web server it's intended to experiment and
-not to be used in production.
+## Objectives
+
+- Allow to experiment with different strategies for managing I/O: thread per
+connection, thread per request, etc..
+
+- Include the minimun necessary components to write relatively ``low level`` web
+backend machinery, think about: reverse proxies, static content servers or
+HTTP Load balancers.
+
+- The performance will only be considered at the amortized time complexity
+level, beyond that, it's not an objective to improve the performance of the
+different components of the server.
 
 ## Status
 
-The project is still in alfa status, the public API is particularly in very
-early stages and stills lags access to many configuration options of some of
+The project is still in alfa, the public API is particularly in very
+early stages and lags access to many configuration options of some of
 the components. That's also true for the documentation, that covers only the
 basics for running a ``server`` and executing handlers but not a fine grain
 configuration of the behavior of the Server.
@@ -60,26 +71,14 @@ fn main() {
 
 You can find a more complex example [here](wrustatic/src/main.rs).
 
-## Objectives
-
-- Allow to experiment with different strategies for managing I/O: thread per
-connection, thread per request, etc..
-
-- Include the minimun necessary components to write relatively ``low level`` web
-backend machinery, think about: reverse proxies, static content servers or
-HTTP Load balancers.
-
-- The performance is only taken into account at the amortized time complexity
-level, not at the constant level.
-
 ## Design
 
 The web server is composed basically of three high level components.
 
 ### HTTP Messages plumbing
 
-Contains all the types needed to represent HTTP Messages, and to
-read and write them ``from`` and ``to`` the wire.
+Contains all the types needed to represent HTTP Messages and to
+read/write them ``from`` and ``to`` the wire.
 
 ### Router
 
@@ -91,25 +90,24 @@ The current router implementation is backed by a
 [Trie](https://en.wikipedia.org/wiki/Trie) structure, so the cost of querying
 the path of a route is O(m) where ``m`` is the length in chars of the path.
 
-Also the Router is designed to be safe for multithread only for querying routes,
-so it supposes it will be constructed using a single thread and won't be modified
-after that.
+Also the router is designed to be thread safe only for querying routes,
+so the operations related to creating routes must be synchronized.
 
 ### Thread pool
 
 Defines the strategy to create and assign threads to execute the Handlers
 defined in the routes.
 
-The current implementation allows to define a ``minimun`` and a ``maximun``
+The current implementation allows defining a ``minimun`` and a ``maximun``
 number of threads. The minimun defines the number of threads that are allocated
 when the pool is created. The maximun defines how many extra threads can be
 allocated dynamically when the initial created threads are busy.
 
 ### Server
 
-Accepts TCP connections listening in a given address, and executes the proper actions
-defined in a set of routes by leveraging the other components.
+Accepts TCP connections listening in a given address and executes the actions
+defined in a set of routes by using a thread pool and a router.
 
 The current implementation of the server uses a thread per connection strategy
-and leverages the excellent [polling](https://github.com/smol-rs/polling) lib
-to accept connections in a non blocking and portable way.
+and leverages the [polling](https://github.com/smol-rs/polling) lib
+to accept connections in a non blocking way.
