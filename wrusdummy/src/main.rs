@@ -31,7 +31,7 @@ fn main() {
         error!("reading config file {}: {}", cfg_file, err);
         process::exit(1);
     });
-    for (name, route) in routes.drain() {
+    for (name, route) in routes {
         let method = HttpMethod::from_str(&route.method).unwrap_or_else(|err| {
             error!("parsing http method in route {}: {}", &name, err);
             process::exit(1);
@@ -118,10 +118,6 @@ mod config {
                 .map_err(|error| io::Error::new(ErrorKind::InvalidData, error))?;
             Ok(Routes(config))
         }
-
-        pub fn drain(mut self) -> Vec<(String, Route)> {
-            self.0.drain().collect::<Vec<(String, Route)>>()
-        }
     }
 
     impl FromStr for Routes {
@@ -129,6 +125,16 @@ mod config {
         fn from_str(s: &str) -> Result<Self, Self::Err> {
             let config: HashMap<String, Route> = serde_yaml::from_str(s)?;
             Ok(Routes(config))
+        }
+    }
+
+    impl IntoIterator for Routes {
+        type Item = (String, Route);
+
+        type IntoIter = std::collections::hash_map::IntoIter<String, Route>;
+
+        fn into_iter(self) -> Self::IntoIter {
+            self.0.into_iter()
         }
     }
 }
