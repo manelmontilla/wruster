@@ -21,7 +21,7 @@ different components of the server.
 ## Status
 
 The project is still in alfa, the public API is particularly in very
-early stages and lags access to many configuration options of some of
+early stages and lacks access to many configuration options of some of
 the components. That's also true for the documentation, that covers only the
 basics for running a ``server`` and executing handlers but not a fine grain
 configuration of the behavior of the Server.
