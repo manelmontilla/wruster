@@ -213,6 +213,51 @@ mod tests {
     }
 
     #[test]
+    fn routes_most_concrete() {
+        let routes = Router::new();
+        let a_b_action: Box<dyn Fn(&mut Request) -> Response + Sync + Send> =
+            Box::new(|_: &mut Request| Response::from_str(&"/a/b").unwrap());
+        routes.add("/a/b", HttpMethod::GET, a_b_action);
+
+        let a_action: Box<dyn Fn(&mut Request) -> Response + Sync + Send> =
+            Box::new(|_: &mut Request| Response::from_str(&"/a").unwrap());
+        routes.add("/a", HttpMethod::GET, a_action);
+
+        let action = routes.get("/a/b", HttpMethod::GET);
+        let action = action.unwrap();
+
+        // Check a request to /a/b is handled by the /a/b action.
+        let mut request = Request {
+            body: None,
+            method: HttpMethod::GET,
+            uri: String::from("/a/b"),
+            version: String::from("HTTP/1.1"),
+            headers: Headers::new(),
+        };
+        let resp = action(&mut request);
+        let mut resp_body = resp.body.unwrap();
+        let mut content = Vec::<u8>::new();
+        resp_body.write(&mut content).unwrap();
+        assert_eq!(Vec::from("/a/b"), content);
+
+        // Check a request to /a is handled by the /a action.
+        let action = routes.get("/a", HttpMethod::GET);
+        let action = action.unwrap();
+        let mut request = Request {
+            body: None,
+            method: HttpMethod::GET,
+            uri: String::from("/a"),
+            version: String::from("HTTP/1.1"),
+            headers: Headers::new(),
+        };
+        let resp = action(&mut request);
+        let mut resp_body = resp.body.unwrap();
+        let mut content = Vec::<u8>::new();
+        resp_body.write(&mut content).unwrap();
+        assert_eq!(Vec::from("/a"), content);
+    }
+
+    #[test]
     fn routes_disctinct_method_same_path() {
         let routes = Router::new();
         let action_body = |_: &mut Request| unimplemented!();
