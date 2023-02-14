@@ -3,7 +3,7 @@ use std::fmt::Debug;
 use std::sync::PoisonError;
 use std::{fmt, io};
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Eq, PartialEq)]
 /// Defines the possible errors generated when reading and parsing a Request or a Response.
 pub enum HttpError {
     /// It's generated when any not controlled error is encountered when

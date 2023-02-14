@@ -173,8 +173,8 @@ impl Request {
         }
         Request {
             body: Some(body),
-            headers: headers,
-            method: method,
+            headers,
+            method,
             uri: path.to_string(),
             version: Version::HTTP1_1.to_string(),
         }
@@ -224,7 +224,7 @@ where
         Request {
             body: Some(body),
             headers: Headers::new(),
-            method: method,
+            method,
             uri: url,
             version: Version::HTTP1_1.to_string(),
         }
@@ -514,11 +514,13 @@ impl fmt::Debug for Body {
     }
 }
 
-/// Used to convert an immutable reference to a Body.
-///
-/// # Examples
-///
-///  TODO
+/**
+Used to convert an immutable reference to a Body.
+
+# Examples
+
+ TODO
+*/
 pub trait IntoBody {
     /// Performs the conversion.
     fn into(self, mime_type: mime::Mime) -> Body;

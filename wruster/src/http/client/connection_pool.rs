@@ -73,7 +73,7 @@ where
         let expire_worker_stop = Arc::new(AtomicBool::new(false));
         let idle_timeout = match idle_timeout {
             Some(timeout) => timeout,
-            None => DEFAULT_IDLE_RESOURCE_TIMEOUT.clone(),
+            None => DEFAULT_IDLE_RESOURCE_TIMEOUT,
         };
         let expire_worker_stop2 = Arc::clone(&expire_worker_stop);
         let expire_worker_handle = thread::spawn(move || {
@@ -108,10 +108,7 @@ where
 
     pub fn get(&self, key: &str) -> Option<PoolResource<T>> {
         let mut resources = self.resources.write().unwrap();
-        match resources.remove(key) {
-            Some(conn) => Some(conn),
-            _ => None,
-        }
+        resources.remove(key).map(|conn| conn)
     }
 
     pub fn insert(&self, key: &str, connection: PoolResource<T>) {
@@ -126,7 +123,7 @@ where
     }
 
     /**
-     Removes all and returns all the resources from the pool.
+     Removes and returns all the resources from the pool.
     */
     pub fn drain(&self) -> Vec<PoolResource<T>> {
         let mut resources = self.resources.write().unwrap();

@@ -264,7 +264,7 @@ impl Clone for StatusCode {
             Self::ServiceUnavailable => Self::ServiceUnavailable,
             Self::GatewayTimeOut => Self::GatewayTimeOut,
             Self::HTTPVersionNotSupported => Self::HTTPVersionNotSupported,
-            Self::ExtensionCode(code) => Self::ExtensionCode(code.clone()),
+            Self::ExtensionCode(code) => Self::ExtensionCode(*code),
         }
     }
 }

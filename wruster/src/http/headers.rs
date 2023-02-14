@@ -350,7 +350,7 @@ impl Header {
         //                   [ message-body ]
         // header-field   = field-name ":" OWS field-value OWS
         // field-name     = token
-        let mut written = to.write_all(&self.name.as_bytes());
+        let mut written = to.write_all(self.name.as_bytes());
         if let Err(err) = written {
             debug!("error writing Header: {:?}", err);
             return Err(HttpError::Unknown(err.to_string()));

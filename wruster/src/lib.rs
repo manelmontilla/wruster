@@ -1,4 +1,5 @@
 #![warn(missing_docs)]
+#![warn(rustdoc::broken_intra_doc_links)]
 
 /*!
 Experimental simple web sever that includes a http
@@ -43,8 +44,8 @@ fn main() {
 */
 
 use std::error::Error as StdError;
-use std::io::{Error, ErrorKind};
-use std::net::SocketAddr;
+use std::io::{self, Error, ErrorKind};
+use std::net::{SocketAddr, TcpStream};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -59,6 +60,10 @@ extern crate log;
 pub mod http;
 /// Contains the router to be used in a [`Server`].
 pub mod router;
+
+/// Contains support functions for tests-
+pub mod test_utils;
+
 mod streams;
 mod thread_pool;
 
@@ -67,12 +72,13 @@ use http::*;
 use polling::{Event, Poller};
 use router::{Normalize, Router};
 
+use rustls::{Certificate, PrivateKey};
 use streams::cancellable_stream::BaseStream;
 use streams::timeout_stream::TimeoutStream;
 use streams::TrackedStream;
 
 use crate::streams::cancellable_stream::CancellableStream;
-use crate::streams::TrackedStreamList;
+use crate::streams::{tls, TrackedStreamList};
 
 /// Defines the default max time for a request to be read
 pub const DEFAULT_READ_REQUEST_TIMEOUT: time::Duration = time::Duration::from_secs(30);
@@ -80,10 +86,10 @@ pub const DEFAULT_READ_REQUEST_TIMEOUT: time::Duration = time::Duration::from_se
 /// Defines the default max time for a response to be written
 pub const DEFAULT_WRITE_RESPONSE_TIMEOUT: time::Duration = time::Duration::from_secs(30);
 
-/// Defines the result type returned from the [``Server``] methods.
+/// Defines the result type returned from the [Server] methods.
 pub type ServerResult = Result<(), Box<dyn StdError>>;
 
-/// Defines the timeouts used in [`Server::from_timeouts`].
+/// Defines the timeouts used in [Server::from_timeouts] method.
 #[derive(Clone)]
 pub struct Timeouts {
     /// Maximun time for a request to be read
@@ -92,7 +98,15 @@ pub struct Timeouts {
     pub write_response_timeout: time::Duration,
 }
 
-/// Represents a web server that can be run by passing a [`router::Router`].
+/// Defines the TLS configuration used in the method [Server::run_tls].
+pub struct TLSConfig {
+    /// The private key to be used in a TLS connection.
+    pub key: PrivateKey,
+    /// The certificate to be used in a TLS connection.
+    pub cert: Certificate,
+}
+
+/// Represents a web server that can be run by passing a [router::Router].
 pub struct Server {
     stop: Arc<AtomicBool>,
     addr: Option<String>,
@@ -205,6 +219,39 @@ impl Server {
         * The server is already started.
     */
     pub fn run(&mut self, addr: &str, routes: Router) -> ServerResult {
+        self.start(addr, routes, move |stream: TcpStream| {
+            CancellableStream::new(stream)
+        })
+    }
+
+    /**
+    Starts a server that accepts TLS connections by listening in the specified address and using the given
+    [`Router`], it returns the control immediately to caller.
+
+    # Arguments
+    */
+    pub fn run_tls(
+        &mut self,
+        addr: &str,
+        routes: Router,
+        key: PrivateKey,
+        cert: Certificate,
+    ) -> ServerResult {
+        self.start(addr, routes, move |stream: TcpStream| {
+            let stream = tls::Stream::new(stream, key.clone(), cert.clone()).unwrap();
+            CancellableStream::new(stream)
+        })
+    }
+
+    fn start<T: BaseStream + Send + Sync + 'static, F>(
+        &mut self,
+        addr: &str,
+        routes: Router,
+        stream_builder: F,
+    ) -> ServerResult
+    where
+        F: Fn(TcpStream) -> io::Result<CancellableStream<T>> + Send + 'static,
+    {
         if self.poller.is_some() {
             return Err(Box::new(Error::new(
                 ErrorKind::Other,
@@ -226,8 +273,22 @@ impl Server {
 
         info!("listening on {}", &addr);
         let routes = Arc::new(routes);
-        let execunits = thread::available_parallelism().unwrap();
-        info!("system reported {} available execution units", execunits);
+        let execunits = match thread::available_parallelism() {
+            Ok(units) => {
+                info!("system reported {} available execution units", units);
+                usize::from(units)
+            }
+            Err(err) => {
+                let default_value = 2;
+                error!(
+                    "error getting available run units: {}, using default value: {}",
+                    err.to_string(),
+                    default_value
+                );
+                default_value
+            }
+        };
+
         let mut pool = thread_pool::Pool::new(execunits.into(), 100);
         let stop = Arc::clone(&self.stop);
         let timeouts = self.timeouts.clone();
@@ -250,7 +311,9 @@ impl Server {
                     info!("accepting connection from {}", src_addr);
                     let cconfig = Arc::clone(&routes);
                     let action_timeouts = timeouts.clone();
-                    let action_stream = match CancellableStream::new(stream) {
+
+                    let stream = stream_builder(stream);
+                    let action_stream = match stream {
                         Ok(stream) => stream,
                         Err(err) => {
                             error!("error cloning stream: {}", err.to_string());

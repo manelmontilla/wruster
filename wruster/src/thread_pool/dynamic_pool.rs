@@ -245,7 +245,7 @@ mod tests {
 
         // Signal the first thread to finish.
         sender.send(()).unwrap();
-        // Give time for worker to finish the task and be ready to accept
+        // Give time to the worker to finish the task and be ready to accept
         // another action.
         // TODO: This test could be flaky.
         thread::sleep(Duration::from_secs(1));

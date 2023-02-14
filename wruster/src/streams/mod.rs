@@ -10,7 +10,10 @@ use std::{
 
 pub mod cancellable_stream;
 pub mod timeout_stream;
+pub mod tls;
 
+#[cfg(test)]
+mod test;
 mod test_utils;
 
 use timeout_stream::Timeout;
@@ -195,48 +198,5 @@ where
     pub fn drain(&self) -> Vec<Weak<ObservedStream<T>>> {
         let mut items = self.items.write().unwrap();
         items.drain().map(|x| x.1).collect()
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use super::timeout_stream::TimeoutStream;
-    use super::*;
-    use std::io::Read;
-    use std::net::Shutdown;
-    use std::net::TcpListener;
-    use std::str::FromStr;
-    use std::thread;
-    use std::time::Duration;
-    use test_utils::{get_free_port, TcpClient};
-
-    #[test]
-    fn test_shutdown_list() {
-        let port = get_free_port();
-        let addr = format!("127.0.0.1:{}", port);
-        let listener = TcpListener::bind(addr.clone()).unwrap();
-        let read_timeout = Duration::from_secs(3);
-        let handle = thread::spawn(move || {
-            let (stream, _) = listener.accept().unwrap();
-            let cstream = CancellableStream::new(stream).unwrap();
-            let track_list = TrackedStreamList::new();
-            let stream_tracked = TrackedStreamList::track(&track_list, cstream);
-            let cstream2 = stream_tracked.clone();
-            assert_eq!(1, track_list.len());
-            let handle = thread::spawn(move || {
-                let mut data = String::from_str("").unwrap();
-                let mut tstream = TimeoutStream::from(stream_tracked, Some(read_timeout), None);
-                tstream
-                    .read_to_string(&mut data)
-                    .expect_err("expected error reading data");
-            });
-            cstream2.shutdown(Shutdown::Read).unwrap();
-            handle.join().unwrap();
-            drop(cstream2);
-            assert_eq!(0, track_list.len());
-        });
-        let client = TcpClient::connect(addr.to_string()).unwrap();
-        handle.join().unwrap();
-        drop(client)
     }
 }
