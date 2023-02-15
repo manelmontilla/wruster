@@ -106,7 +106,7 @@ impl StatusCode {
             StatusCode::ServiceUnavailable => "Service Unavailable",
             StatusCode::GatewayTimeOut => "Gateway Time-out",
             StatusCode::HTTPVersionNotSupported => "HTTP Version not supported",
-            StatusCode::ExtensionCode(_) => "Extesion code",
+            StatusCode::ExtensionCode(_) => "Extension code",
         }
     }
 }

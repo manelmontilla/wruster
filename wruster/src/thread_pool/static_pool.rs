@@ -157,7 +157,7 @@ mod tests {
             *str_result = String::from("done");
         };
         pool.run(Box::new(action)).unwrap();
-        // Droping the pool ensures the action is finished.
+        // Dropping the pool ensures the action is finished.
         drop(pool);
         let result = &*result.lock().unwrap();
         assert_eq!(result, "done");
@@ -182,7 +182,7 @@ mod tests {
 
         pool.run(Box::new(action)).unwrap();
         pool.run(Box::new(action2)).unwrap();
-        // Droping the pool forces ensdures the actions are executed.
+        // Dropping the pool forces ensdures the actions are executed.
         drop(pool);
         let result = &*result.lock().unwrap();
         assert_eq!(result, "first done");

@@ -160,7 +160,7 @@ impl Headers {
     # Errors
 
     This function will return an error if there is any problem
-    writting ``to`` parameter.
+    writing ``to`` parameter.
     */
     pub fn write<T: io::Write>(&self, to: &mut T) -> HttpResult<()> {
         // generic-message = start-line

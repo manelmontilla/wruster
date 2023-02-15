@@ -8,7 +8,7 @@ use super::*;
 use crate::test_utils::*;
 
 #[test]
-fn server_recives_data() {
+fn server_receives_data() {
     let cert = load_test_certificate().unwrap();
     let key = load_private_key().unwrap();
     let port = get_free_port();

@@ -140,7 +140,7 @@ where
 {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         // If no timeout is defined for reading, we just pass through to the
-        // underlaying reader.
+        // underlying reader.
         let stream = &mut self.stream;
         let timeout = match self.read {
             None => return stream.read(buf),
@@ -184,7 +184,7 @@ where
 {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         // If no timeout has set for write, we just pass through to the
-        // underlaying writer.
+        // underlying writer.
         let stream = &mut self.stream;
         let timeout = match self.write {
             None => return stream.write(buf),
@@ -193,7 +193,7 @@ where
         let write = match self.ongoing_write.as_mut() {
             None => {
                 // If no timeout has set for write, we just pass through to the
-                // underlaying writer.
+                // underlying writer.
                 self.ongoing_write = Some(Operation::from_timeout(timeout));
                 self.ongoing_write.as_mut().unwrap()
             }

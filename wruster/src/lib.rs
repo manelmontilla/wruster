@@ -92,9 +92,9 @@ pub type ServerResult = Result<(), Box<dyn StdError>>;
 /// Defines the timeouts used in [Server::from_timeouts] method.
 #[derive(Clone)]
 pub struct Timeouts {
-    /// Maximun time for a request to be read
+    /// maximum time for a request to be read
     pub read_request_timeout: time::Duration,
-    /// Maximun time for a request to be written.
+    /// maximum time for a request to be written.
     pub write_response_timeout: time::Duration,
 }
 

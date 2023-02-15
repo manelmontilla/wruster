@@ -398,10 +398,10 @@ impl Body {
         from: T,
         headers: &Headers,
     ) -> Result<Option<Body>, HttpError> {
-        if let Some(encoding) = headers.get("Transfer-Enconding") {
+        if let Some(encoding) = headers.get("Transfer-Encoding") {
             // Transfer-Encoding entity is not supported.
             if encoding.len() != 1 {
-                let msg = "invalid Transfer-Enconding header".to_string();
+                let msg = "invalid Transfer-Encoding header".to_string();
                 return Err(Unknown(msg));
             }
             if encoding[0] != "identity" {
@@ -464,7 +464,7 @@ impl Body {
     }
 
     /**
-    Ensures the content length specified in the body is read from the underlaying reader.
+    Ensures the content length specified in the body is read from the underlying reader.
     */
     pub fn ensure_read(&mut self) -> Result<(), HttpError> {
         if self.bytes_read == self.content_length {

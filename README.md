@@ -10,7 +10,7 @@ components at the HTTP protocol level.
 - Allow to experiment with different strategies for managing I/O: thread per
 connection, thread per request, etc..
 
-- Include the minimun necessary components to write relatively ``low level`` web
+- Include the minimum necessary components to write relatively ``low level`` web
 backend machinery, think about: reverse proxies, static content servers or
 HTTP Load balancers.
 
@@ -98,9 +98,9 @@ so the operations related to creating routes must be synchronized.
 Defines the strategy to create and assign threads to execute the Handlers
 defined in the routes.
 
-The current implementation allows defining a ``minimun`` and a ``maximun``
-number of threads. The minimun defines the number of threads that are allocated
-when the pool is created. The maximun defines how many extra threads can be
+The current implementation allows defining a ``minimum`` and a ``maximum``
+number of threads. The minimum defines the number of threads that are allocated
+when the pool is created. The maximum defines how many extra threads can be
 allocated dynamically when the initial created threads are busy.
 
 ### Server
