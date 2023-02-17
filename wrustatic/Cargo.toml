@@ -9,6 +9,8 @@ edition = "2021"
 
 wruster = { path ="../wruster"}
 wruster_handlers = { path ="../wruster_handlers"}
-
 log = "0.4.14"
 env_logger = "0.8.4"
+rustls = "0.20.6"
+rustls-pemfile = "1.0.0"
+clap = { version = "4.1.5", features = ["derive"] }
