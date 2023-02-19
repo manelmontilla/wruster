@@ -1,14 +1,17 @@
 use std::{
     fmt::{Debug, Display},
-    io::{self, Read, Write},
+    io::{self, BufReader, Read, Write},
     net::{Shutdown, TcpStream},
+    path::{Path, PathBuf},
     sync::{Arc, Mutex},
     time::Duration,
 };
 
-use rustls::{self, Certificate, PrivateKey, ServerConfig, ServerConnection, StreamOwned};
+use rustls::{self, ServerConfig, ServerConnection, StreamOwned};
 
 use super::cancellable_stream::BaseStream;
+
+pub mod test_utils;
 
 #[cfg(test)]
 mod test;
@@ -24,11 +27,11 @@ impl Stream {
         private_key: PrivateKey,
         cert: Certificate,
     ) -> Result<Self, io::Error> {
-        let cert_chain = vec![cert];
+        let cert_chain = vec![cert.0];
         let tls_config = ServerConfig::builder()
             .with_safe_defaults()
             .with_no_client_auth()
-            .with_single_cert(cert_chain, private_key)
+            .with_single_cert(cert_chain, private_key.0)
             .map_err(|err| io::Error::new(io::ErrorKind::Other, err))?;
         let plain_stream = stream.try_clone()?;
         let tls_config = Arc::new(tls_config);
@@ -119,3 +122,103 @@ impl Debug for ComposeError {
 }
 
 impl std::error::Error for ComposeError {}
+
+pub struct Certificate(rustls::Certificate);
+
+impl Certificate {
+    /**
+    Reads a certificate from the given path to a pem file.
+    # Arguments
+
+    * `path` a path to a file in pem format containing a certificate.
+
+    # Errors
+
+    This function will return an error if:
+        * The path does not exists.
+        * The format of the file is not valid.
+        * There are no certificates stored in the file.
+    */
+    pub fn read_from(path: &str) -> io::Result<Certificate> {
+        let cert_path = PathBuf::from(path);
+        let file = std::fs::File::open(cert_path).map_err(|err| {
+            if err.kind() == io::ErrorKind::NotFound {
+                io::Error::new(io::ErrorKind::Other, format!("file {} not found", path))
+            } else {
+                err
+            }
+        })?;
+        let mut cert_reader = std::io::BufReader::new(file);
+        let cert = rustls_pemfile::certs(&mut cert_reader)?
+            .iter()
+            .map(|v| rustls::Certificate(v.clone()))
+            .collect::<Vec<rustls::Certificate>>();
+        match cert.len() {
+            0 => Err(io::Error::new(
+                io::ErrorKind::Other,
+                format!("no certificate found in {} ", path),
+            )),
+            _ => Ok(Certificate(cert[0].clone())),
+        }
+    }
+}
+
+impl From<&Certificate> for Vec<u8> {
+    fn from(cert: &Certificate) -> Self {
+        let data = cert.0.as_ref();
+        Vec::from(data)
+    }
+}
+
+impl Clone for Certificate {
+    fn clone(&self) -> Self {
+        Self(self.0.clone())
+    }
+}
+
+pub struct PrivateKey(rustls::PrivateKey);
+
+impl PrivateKey {
+    /**
+    Reads a private key from the given path to a pem file.
+    # Arguments
+
+    * `path` a path to a file in pem format containing the private key.
+
+    # Errors
+
+    This function will return an error if:
+        * The path does not exists.
+        * The format of the file is not valid.
+        * There are no privates keys stored in the file.
+    */
+    pub fn read_from(path: &str) -> io::Result<PrivateKey> {
+        let keyfile = std::fs::File::open(&path).map_err(|err| {
+            if err.kind() == io::ErrorKind::NotFound {
+                io::Error::new(io::ErrorKind::Other, format!("no file found in {} ", path))
+            } else {
+                err
+            }
+        })?;
+        let mut reader = BufReader::new(keyfile);
+        match rustls_pemfile::read_one(&mut reader)? {
+            Some(rustls_pemfile::Item::RSAKey(key)) => Ok(PrivateKey(rustls::PrivateKey(key))),
+            Some(rustls_pemfile::Item::PKCS8Key(key)) => Ok(PrivateKey(rustls::PrivateKey(key))),
+            Some(rustls_pemfile::Item::ECKey(key)) => Ok(PrivateKey(rustls::PrivateKey(key))),
+            None => Err(io::Error::new(
+                io::ErrorKind::Other,
+                format!("no private key found in {} ", path),
+            )),
+            _ => Err(io::Error::new(
+                io::ErrorKind::Other,
+                format!("no private key found in {} ", path),
+            )),
+        }
+    }
+}
+
+impl Clone for PrivateKey {
+    fn clone(&self) -> Self {
+        Self(self.0.clone())
+    }
+}

@@ -1,8 +1,7 @@
 use super::*;
 use crate::streams::timeout_stream::TimeoutStream;
-use crate::test_utils::{
-    build_tls_test_client_config, load_private_key, load_test_certificate, TestTLSClient,
-};
+use crate::streams::tls::test_utils::*;
+use crate::test_utils::TestTLSClient;
 
 use std::io::{BufRead, BufReader, ErrorKind, Read, Write};
 use std::net::{Shutdown, TcpListener};
@@ -167,7 +166,7 @@ fn tls_stream_read_reads_data() {
     let listener = TcpListener::bind(addr.clone()).unwrap();
     let handle = thread::spawn(move || {
         let (stream, _) = listener.accept().unwrap();
-        let key = load_private_key().unwrap();
+        let key = load_test_private_key().unwrap();
         let cert = load_test_certificate().unwrap();
         let stream = tls::Stream::new(stream, key, cert).unwrap();
         let mut cstream = CancellableStream::new(stream).unwrap();
@@ -176,8 +175,7 @@ fn tls_stream_read_reads_data() {
         reader.read_until(b' ', &mut content).unwrap();
         String::from_utf8_lossy(&content).to_string()
     });
-    let config = build_tls_test_client_config().unwrap();
-    let mut client = TestTLSClient::new("localhost", port, config).unwrap();
+    let mut client = TestTLSClient::new("localhost", port).unwrap();
     client.write("test  ".as_bytes()).unwrap();
     let received = handle.join().unwrap();
     assert_eq!(received, "test ".to_string());
@@ -191,7 +189,7 @@ fn test_shutdown_list_tls() {
     let read_timeout = Duration::from_secs(3);
     let handle = thread::spawn(move || {
         let (stream, _) = listener.accept().unwrap();
-        let key = load_private_key().unwrap();
+        let key = load_test_private_key().unwrap();
         let cert = load_test_certificate().unwrap();
         let stream = tls::Stream::new(stream, key, cert).unwrap();
         let cstream = CancellableStream::new(stream).unwrap();
@@ -211,9 +209,7 @@ fn test_shutdown_list_tls() {
         drop(cstream2);
         assert_eq!(0, track_list.len());
     });
-    //let client = TcpClient::connect(addr.to_string()).unwrap();
-    let config = build_tls_test_client_config().unwrap();
-    let client = TestTLSClient::new("localhost", port, config).unwrap();
+    let client = TestTLSClient::new("localhost", port).unwrap();
     handle.join().unwrap();
     drop(client)
 }

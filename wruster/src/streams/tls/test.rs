@@ -4,13 +4,14 @@ use std::{
     thread,
 };
 
+use super::test_utils::*;
 use super::*;
-use crate::test_utils::*;
+use crate::test_utils::{get_free_port, TestTLSClient};
 
 #[test]
 fn server_receives_data() {
     let cert = load_test_certificate().unwrap();
-    let key = load_private_key().unwrap();
+    let key = load_test_private_key().unwrap();
     let port = get_free_port();
     let addr = format!("localhost:{}", port);
     let listener = TcpListener::bind(addr).unwrap();
@@ -22,8 +23,7 @@ fn server_receives_data() {
         reader.read_until(b' ', &mut content).unwrap();
         String::from_utf8_lossy(&content).to_string()
     });
-    let config = build_tls_test_client_config().unwrap();
-    let mut client = TestTLSClient::new("localhost", port, config).unwrap();
+    let mut client = TestTLSClient::new("localhost", port).unwrap();
     client.write("test ".as_bytes()).unwrap();
     let received = handler.join().unwrap();
     assert_eq!("test ", received)

@@ -55,30 +55,29 @@ use std::{net, thread};
 
 #[macro_use]
 extern crate log;
+use http::errors::HttpError;
+use http::*;
+use polling::{Event, Poller};
+use router::{Normalize, Router};
+
+use streams::cancellable_stream::BaseStream;
+use streams::timeout_stream::TimeoutStream;
+use streams::TrackedStream;
+
+use crate::streams::cancellable_stream::CancellableStream;
+pub use crate::streams::tls::{Certificate, PrivateKey};
+use crate::streams::{tls, TrackedStreamList};
 
 /// Contains all the types necessary for dealing with Http messages.
 pub mod http;
 /// Contains the router to be used in a [`Server`].
 pub mod router;
 
-/// Contains support functions for tests-
+/// Contains support functions for tests.
 pub mod test_utils;
 
 mod streams;
 mod thread_pool;
-
-use http::errors::HttpError;
-use http::*;
-use polling::{Event, Poller};
-use router::{Normalize, Router};
-
-use rustls::{Certificate, PrivateKey};
-use streams::cancellable_stream::BaseStream;
-use streams::timeout_stream::TimeoutStream;
-use streams::TrackedStream;
-
-use crate::streams::cancellable_stream::CancellableStream;
-use crate::streams::{tls, TrackedStreamList};
 
 /// Defines the default max time for a request to be read
 pub const DEFAULT_READ_REQUEST_TIMEOUT: time::Duration = time::Duration::from_secs(30);
@@ -96,14 +95,6 @@ pub struct Timeouts {
     pub read_request_timeout: time::Duration,
     /// maximum time for a request to be written.
     pub write_response_timeout: time::Duration,
-}
-
-/// Defines the TLS configuration used in the method [Server::run_tls].
-pub struct TLSConfig {
-    /// The private key to be used in a TLS connection.
-    pub key: PrivateKey,
-    /// The certificate to be used in a TLS connection.
-    pub cert: Certificate,
 }
 
 /// Represents a web server that can be run by passing a [router::Router].
@@ -179,7 +170,7 @@ impl Server {
     }
 
     /**
-    Starts a server listening in the specified address and using the given
+    Starts a server listening on the specified address and using the given
     [`Router`], it returns the control immediately to caller.
 
     # Arguments
@@ -215,8 +206,8 @@ impl Server {
     # Errors
 
     This function will return an error if:
-        * The address is wrong formatted or not free.
-        * The server is already started.
+    * The address is wrong formatted or not free.
+    * The server is already started.
     */
     pub fn run(&mut self, addr: &str, routes: Router) -> ServerResult {
         self.start(addr, routes, move |stream: TcpStream| {
@@ -225,11 +216,50 @@ impl Server {
     }
 
     /**
-    Starts a server that accepts TLS connections by listening in the specified address and using the given
-    [`Router`], it returns the control immediately to caller.
+     Starts a server that accepts TLS connections by listening on the specified address and using the given
+     [`Router`], it returns the control immediately to caller.
 
-    # Arguments
-    */
+     # Arguments
+     * `addr` a string slice specifying the address to listen on, format: "hostname:port"
+
+     * `routes` a [`Router`] with the routes the server must serve.
+
+     * `key` the private key to use in TLS connections.
+
+     * `cert` the certificate to use in TLS connections.
+
+     # Examples
+
+     ```no_run
+     use std::str::FromStr;
+
+     use wruster::{Server, Certificate, PrivateKey};
+     use wruster::http::{self, Request};
+     use wruster::http::Response;
+     use wruster::router;
+     use wruster::router::HttpHandler;
+     let routes = router::Router::new();
+     let handler: HttpHandler = Box::new(move |request: &mut Request| {
+         let body = &mut request.body.as_mut().unwrap();
+         let mut name = String::new();
+         body.content.read_to_string(&mut name).unwrap();
+         let greetings = format!("hello {}!!", name);
+         Response::from_str(&greetings).unwrap()
+     });
+     routes.add("/", http::HttpMethod::GET, handler);
+     let cert = Certificate::from("certificate.perm").unwrap();
+     let key = Certificate::from("private_key.perm").unwrap();
+     let mut server = Server::new();
+     server.run_tls("127.0.0.1:8082", routes, key, cert).unwrap();
+     server.wait().unwrap();
+     ```
+    # Errors
+
+    This function will return an error if:
+    * The address is wrong formatted or not free.
+    * The server is already started.
+
+     */
     pub fn run_tls(
         &mut self,
         addr: &str,

@@ -13,8 +13,7 @@ use wruster::router::HttpHandler;
 use wruster::*;
 
 use wruster::test_utils::{
-    build_tls_test_client_config, get_free_port, load_private_key, load_test_certificate,
-    TestTLSClient,
+    get_free_port, load_test_certificate, load_test_private_key, TestTLSClient,
 };
 
 #[test]
@@ -132,14 +131,13 @@ fn server_tls_handles_requests() {
     let addr = format!("127.0.0.1:{}", port.to_string());
     routes.add("/", http::HttpMethod::POST, handler);
 
-    let key = load_private_key().unwrap();
+    let key = load_test_private_key().unwrap();
     let cert = load_test_certificate().unwrap();
     server.run_tls(&addr, routes, key, cert).unwrap();
 
     thread::sleep(time::Duration::from_secs(1));
 
-    let config = build_tls_test_client_config().unwrap();
-    let mut client = TestTLSClient::new("localhost", port, config).unwrap();
+    let mut client = TestTLSClient::new("localhost", port).unwrap();
     let request = "POST / HTTP/1.1\r\n\
 Content-Length: 4\r\n\
 \r\n\

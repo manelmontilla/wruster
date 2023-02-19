@@ -1,54 +1,17 @@
 use std::{
     convert::TryInto,
     error::Error,
-    io::{self, BufReader, Read, Write},
+    io::{self, Read, Write},
     net::{Ipv4Addr, Shutdown, SocketAddr, SocketAddrV4, TcpListener, TcpStream, ToSocketAddrs},
     path::PathBuf,
     sync::Arc,
 };
 
-use rustls::{ClientConfig, ClientConnection, PrivateKey, StreamOwned};
+use crate::streams::tls::test_utils::*;
+use crate::streams::tls::{Certificate, PrivateKey};
+use rustls::{ClientConfig, ClientConnection, StreamOwned};
 
-pub fn load_test_certificate() -> io::Result<rustls::Certificate> {
-    let mut cert_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    cert_path.push("tests/certs/cert.pem");
-    let mut cert_reader = std::io::BufReader::new(std::fs::File::open(cert_path)?);
-    let certs: Vec<rustls::Certificate> = rustls_pemfile::certs(&mut cert_reader)
-        .unwrap()
-        .iter()
-        .map(|v| rustls::Certificate(v.clone()))
-        .collect();
-    Ok(certs[0].clone())
-}
-
-pub fn load_test_ca() -> io::Result<Vec<u8>> {
-    let mut cert_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    cert_path.push("tests/certs/cert.der");
-    let mut cert_reader = std::io::BufReader::new(std::fs::File::open(cert_path)?);
-    let mut cert_contents = Vec::new();
-    cert_reader.read_to_end(&mut cert_contents)?;
-    Ok(cert_contents)
-}
-
-pub fn load_private_key() -> Result<PrivateKey, io::Error> {
-    let mut key_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    key_path.push("tests/certs/key.pem");
-    let keyfile = std::fs::File::open(key_path).expect("cannot open private key file");
-    let mut reader = BufReader::new(keyfile);
-    match rustls_pemfile::read_one(&mut reader)? {
-        Some(rustls_pemfile::Item::RSAKey(key)) => return Ok(rustls::PrivateKey(key)),
-        Some(rustls_pemfile::Item::PKCS8Key(key)) => return Ok(rustls::PrivateKey(key)),
-        Some(rustls_pemfile::Item::ECKey(key)) => return Ok(rustls::PrivateKey(key)),
-        None => Err(io::Error::new(
-            io::ErrorKind::Other,
-            "no suitable private key found",
-        )),
-        _ => Err(io::Error::new(
-            io::ErrorKind::Other,
-            "no suitable private key found",
-        )),
-    }
-}
+pub use crate::streams::tls::test_utils::{load_test_certificate, load_test_private_key};
 
 pub fn get_free_port() -> u16 {
     let addr = SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0);
@@ -59,10 +22,10 @@ pub fn get_free_port() -> u16 {
         .port()
 }
 
-pub fn build_tls_test_client_config() -> Result<ClientConfig, io::Error> {
+fn build_tls_test_client_config() -> Result<ClientConfig, io::Error> {
     let mut root_store = rustls::RootCertStore::empty();
     let test_ca = load_test_ca()?;
-    let test_cas = vec![test_ca];
+    let test_cas: Vec<Vec<u8>> = vec![Vec::from(test_ca)];
     root_store.add_parsable_certificates(&test_cas);
     let suites = rustls::DEFAULT_CIPHER_SUITES;
     let versions = rustls::DEFAULT_VERSIONS.to_vec();
@@ -82,12 +45,13 @@ pub struct TestTLSClient {
 }
 
 impl TestTLSClient {
-    pub fn new(server: &str, port: u16, config: ClientConfig) -> io::Result<TestTLSClient> {
+    pub fn new(server: &str, port: u16) -> io::Result<TestTLSClient> {
         let addr = format!("{}:{}", server, port);
         let addrs = addr.to_socket_addrs()?;
         let addrs = addrs.collect::<Vec<SocketAddr>>();
 
         let server_name = server.try_into().unwrap();
+        let config = build_tls_test_client_config()?;
         let conn = rustls::ClientConnection::new(Arc::new(config), server_name)
             .map_err(|err| io::Error::new(io::ErrorKind::Other, err))?;
         let sock = TcpStream::connect(&*addrs)?;
@@ -145,4 +109,13 @@ impl io::Read for TcpClient {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         self.read(buf)
     }
+}
+
+fn load_test_ca() -> io::Result<Vec<u8>> {
+    let mut cert_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    cert_path.push("tests/certs/cert.der");
+    let mut cert_reader = std::io::BufReader::new(std::fs::File::open(cert_path)?);
+    let mut cert_contents = Vec::new();
+    cert_reader.read_to_end(&mut cert_contents)?;
+    Ok(cert_contents)
 }
