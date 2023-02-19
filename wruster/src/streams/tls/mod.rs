@@ -2,7 +2,7 @@ use std::{
     fmt::{Debug, Display},
     io::{self, BufReader, Read, Write},
     net::{Shutdown, TcpStream},
-    path::{Path, PathBuf},
+    path::PathBuf,
     sync::{Arc, Mutex},
     time::Duration,
 };
@@ -123,6 +123,9 @@ impl Debug for ComposeError {
 
 impl std::error::Error for ComposeError {}
 
+/**
+Represents a Certificate that can be used in the TLS connections.
+*/
 pub struct Certificate(rustls::Certificate);
 
 impl Certificate {
@@ -176,6 +179,9 @@ impl Clone for Certificate {
     }
 }
 
+/**
+Represents a private key that can be used in the TLS connections.
+*/
 pub struct PrivateKey(rustls::PrivateKey);
 
 impl PrivateKey {

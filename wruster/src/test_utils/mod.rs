@@ -1,18 +1,18 @@
 use std::{
     convert::TryInto,
-    error::Error,
     io::{self, Read, Write},
-    net::{Ipv4Addr, Shutdown, SocketAddr, SocketAddrV4, TcpListener, TcpStream, ToSocketAddrs},
+    net::{Ipv4Addr, SocketAddr, SocketAddrV4, TcpListener, TcpStream, ToSocketAddrs},
     path::PathBuf,
     sync::Arc,
 };
 
-use crate::streams::tls::test_utils::*;
-use crate::streams::tls::{Certificate, PrivateKey};
 use rustls::{ClientConfig, ClientConnection, StreamOwned};
 
 pub use crate::streams::tls::test_utils::{load_test_certificate, load_test_private_key};
 
+/**
+ Returns a free TCP port
+*/
 pub fn get_free_port() -> u16 {
     let addr = SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0);
     TcpListener::bind(addr)
@@ -40,17 +40,26 @@ fn build_tls_test_client_config() -> Result<ClientConfig, io::Error> {
     Ok(config)
 }
 
+/**
+    Implements a TCP client that uses TLS connections suitable to be used in tests.
+*/
 pub struct TestTLSClient {
+    /**
+     The TLS stream used by the client.
+    */
     pub stream: StreamOwned<ClientConnection, TcpStream>,
 }
 
 impl TestTLSClient {
-    pub fn new(server: &str, port: u16) -> io::Result<TestTLSClient> {
-        let addr = format!("{}:{}", server, port);
+    /**
+    Returns a [TestTLSClient] connected to address in the specified host:port.
+    */
+    pub fn new(host: &str, port: u16) -> io::Result<TestTLSClient> {
+        let addr = format!("{}:{}", host, port);
         let addrs = addr.to_socket_addrs()?;
         let addrs = addrs.collect::<Vec<SocketAddr>>();
 
-        let server_name = server.try_into().unwrap();
+        let server_name = host.try_into().unwrap();
         let config = build_tls_test_client_config()?;
         let conn = rustls::ClientConnection::new(Arc::new(config), server_name)
             .map_err(|err| io::Error::new(io::ErrorKind::Other, err))?;
@@ -60,54 +69,18 @@ impl TestTLSClient {
         Ok(TestTLSClient { stream })
     }
 
+    /**
+    reads from the server the [TestTLSClient] is connected to.
+    */
     pub fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         self.stream.read(buf)
     }
 
+    /**
+    writes to the server the [TestTLSClient] is connected to.
+    */
     pub fn write(&mut self, data: &[u8]) -> io::Result<usize> {
         self.stream.write(data)
-    }
-}
-
-pub struct TcpClient {
-    stream: Option<TcpStream>,
-}
-
-impl TcpClient {
-    pub fn connect(addr: String) -> Result<Self, Box<dyn Error>> {
-        let stream = TcpStream::connect(&addr)?;
-        let stream = Some(stream);
-        Ok(TcpClient { stream })
-    }
-
-    pub fn send(&mut self, data: &[u8]) -> Result<(), Box<dyn Error>> {
-        let stream = self.stream.as_mut().unwrap();
-        stream.write(data)?;
-        stream.flush()?;
-        Ok(())
-    }
-
-    pub fn close(&mut self) -> io::Result<()> {
-        let stream = self.stream.as_mut().unwrap();
-        stream.shutdown(Shutdown::Both)?;
-        Ok(())
-    }
-
-    pub fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        let stream = self.stream.as_mut().unwrap();
-        stream.read(buf)
-    }
-}
-
-impl Drop for TcpClient {
-    fn drop(&mut self) {
-        let _ = self.close();
-    }
-}
-
-impl io::Read for TcpClient {
-    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        self.read(buf)
     }
 }
 
