@@ -247,8 +247,8 @@ impl Server {
          Response::from_str(&greetings).unwrap()
      });
      routes.add("/", http::HttpMethod::GET, handler);
-     let cert = Certificate::from("certificate.perm").unwrap();
-     let key = Certificate::from("private_key.perm").unwrap();
+     let cert = Certificate::read_from("certificate.perm").unwrap();
+     let key = PrivateKey::read_from("private_key.perm").unwrap();
      let mut server = Server::new();
      server.run_tls("127.0.0.1:8082", routes, key, cert).unwrap();
      server.wait().unwrap();
