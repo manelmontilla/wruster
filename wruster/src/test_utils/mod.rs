@@ -25,12 +25,12 @@ pub fn get_free_port() -> u16 {
 fn build_tls_test_client_config() -> Result<ClientConfig, io::Error> {
     let mut root_store = rustls::RootCertStore::empty();
     let test_ca = load_test_ca()?;
-    let test_cas: Vec<Vec<u8>> = vec![Vec::from(test_ca)];
+    let test_cas: Vec<Vec<u8>> = vec![test_ca];
     root_store.add_parsable_certificates(&test_cas);
     let suites = rustls::DEFAULT_CIPHER_SUITES;
     let versions = rustls::DEFAULT_VERSIONS.to_vec();
     let mut config = rustls::ClientConfig::builder()
-        .with_cipher_suites(&suites)
+        .with_cipher_suites(suites)
         .with_safe_default_kx_groups()
         .with_protocol_versions(&versions)
         .map_err(|err| io::Error::new(io::ErrorKind::Other, err))?

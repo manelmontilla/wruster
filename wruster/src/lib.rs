@@ -319,7 +319,7 @@ impl Server {
             }
         };
 
-        let mut pool = thread_pool::Pool::new(execunits.into(), 100);
+        let mut pool = thread_pool::Pool::new(execunits, 100);
         let stop = Arc::clone(&self.stop);
         let timeouts = self.timeouts.clone();
         let active_streams = TrackedStreamList::new();
@@ -385,7 +385,7 @@ impl Server {
                 };
             }
             info!("server stopped accepting connections");
-            return Ok(());
+            Ok(())
         });
 
         self.handle = Some(handle);
@@ -442,7 +442,7 @@ impl Server {
                 Ok(()) => Ok(()),
                 Err(error) => {
                     let err = Box::new(Error::new(ErrorKind::Other, error.to_string()));
-                    return Err(err);
+                    Err(err)
                 }
             },
             Err(err) => {
@@ -451,7 +451,7 @@ impl Server {
                     ErrorKind::Other,
                     "error waiting for accepting connections",
                 ));
-                return Err(err);
+                Err(err)
             }
         }
     }
@@ -658,5 +658,5 @@ fn is_connection_persistent(request: &http::Request) -> bool {
     if request.version == "HTTP/1.0" && value == "keep-alive" {
         return true;
     };
-    return false;
+    false
 }

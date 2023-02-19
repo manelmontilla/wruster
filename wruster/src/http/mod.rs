@@ -204,7 +204,7 @@ impl Request {
         if self.version == "HTTP/1.0" && value == "keep-alive" {
             return true;
         };
-        return false;
+        false
     }
 }
 
@@ -423,7 +423,7 @@ impl Body {
 
         let len = match usize::from_str(len) {
             Err(err) => {
-                let msg = format!("invalid Content-Length header, {}", err.to_string());
+                let msg = format!("invalid Content-Length header, {}", err);
                 return Err(Unknown(msg));
             }
             Ok(size) => size,
@@ -441,11 +441,7 @@ impl Body {
                 let mtype: mime::Mime = match types[0].parse() {
                     Ok(t) => t,
                     Err(err) => {
-                        let msg = format!(
-                            "invalid Content-Type header, {:?}, {}",
-                            types,
-                            err.to_string()
-                        );
+                        let msg = format!("invalid Content-Type header, {:?}, {}", types, err);
                         return Err(Unknown(msg));
                     }
                 };
@@ -455,7 +451,7 @@ impl Body {
         let c = from.take(len as u64);
         let content = Box::new(c);
         let body = Body {
-            content: content,
+            content,
             content_type,
             content_length: len as u64,
             bytes_read: 0,
@@ -496,7 +492,7 @@ impl Read for Body {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         match self.content.read(buf) {
             Ok(bytes_read) => {
-                self.bytes_read = self.bytes_read + bytes_read as u64;
+                self.bytes_read += bytes_read as u64;
                 Ok(bytes_read)
             }
             Err(err) => Err(err),
@@ -708,7 +704,7 @@ impl Response {
     }
 }
 
-impl<'a> FromStr for Response {
+impl FromStr for Response {
     type Err = Infallible;
     fn from_str(content: &str) -> Result<Response, Infallible> {
         let content = Vec::from(content);
@@ -913,7 +909,7 @@ impl MessageChar for char {
         let valid_token_symbols = [
             '!', '#', '$', '%', '&', '\'', '*', '+', '-', '.', '^', '_', '`', '|', '~',
         ];
-        if valid_token_symbols.contains(&self) {
+        if valid_token_symbols.contains(self) {
             return true;
         };
         false

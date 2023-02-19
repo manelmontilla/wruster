@@ -108,7 +108,7 @@ where
 
     pub fn get(&self, key: &str) -> Option<PoolResource<T>> {
         let mut resources = self.resources.write().unwrap();
-        resources.remove(key).map(|conn| conn)
+        resources.remove(key)
     }
 
     pub fn insert(&self, key: &str, connection: PoolResource<T>) {

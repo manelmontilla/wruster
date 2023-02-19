@@ -93,14 +93,14 @@ mod config {
 
     use serde::{Deserialize, Serialize};
 
-    #[derive(Debug, PartialEq, Serialize, Deserialize, Clone)]
+    #[derive(Debug, PartialEq, Eq, Serialize, Deserialize, Clone)]
     pub struct Route {
         pub path: String,
         pub method: String,
         pub response: Response,
     }
 
-    #[derive(Debug, PartialEq, Serialize, Deserialize, Clone)]
+    #[derive(Debug, PartialEq, Eq, Serialize, Deserialize, Clone)]
     pub struct Response {
         pub status: u16,
         pub content: String,
@@ -108,7 +108,7 @@ mod config {
         pub content_type: String,
     }
 
-    #[derive(Debug, PartialEq, Serialize, Deserialize)]
+    #[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
     pub struct Routes(HashMap<String, Route>);
 
     impl Routes {

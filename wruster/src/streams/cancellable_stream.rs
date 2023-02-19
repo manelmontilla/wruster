@@ -115,13 +115,13 @@ where
         let write_timeout = RwLock::new(None);
         let done = atomic::AtomicBool::new(false);
         poller.add(&stream.as_raw(), Event::all(1))?;
-        return Ok(CancellableStream {
+        Ok(CancellableStream {
             stream,
             done,
             poller,
             read_timeout,
             write_timeout,
-        });
+        })
     }
 
     pub fn set_read_timeout(&self, dur: Option<Duration>) -> io::Result<()> {

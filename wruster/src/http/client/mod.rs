@@ -94,10 +94,10 @@ impl<'a> Client {
                     let pool = self.connection_pool.lock().map_err(HttpError::from)?;
                     match pool.get(addr) {
                         Some(conn) => conn.resource(),
-                        None => Self::connect(addr).map(|stream| Arc::new(stream))?,
+                        None => Self::connect(addr).map(Arc::new)?,
                     }
                 }
-                false => Self::connect(addr).map(|stream| Arc::new(stream))?,
+                false => Self::connect(addr).map(Arc::new)?,
             }
         };
         let read_timeout = DEFAULT_READ_RESPONSE_TIMEOUT;
@@ -106,9 +106,7 @@ impl<'a> Client {
         let conn = conn.try_clone().map_err(HttpError::from)?;
         let response_conn = conn.try_clone().map_err(HttpError::from)?;
         let mut stream = TimeoutStream::from(conn, Some(read_timeout), Some(write_timeout));
-        if let Err(err) = request.write(&mut stream) {
-            return Err(err);
-        };
+        request.write(&mut stream)?;
         stream.flush().map_err(HttpError::from)?;
         let stream = Box::new(stream);
         let response = match Response::read_from(stream) {
@@ -131,6 +129,12 @@ impl<'a> Client {
         let addrs = addr.to_socket_addrs().map_err(HttpError::from)?;
         let addrs = addrs.collect::<Vec<SocketAddr>>();
         TcpStream::connect(&*addrs).map_err(HttpError::from)
+    }
+}
+
+impl Default for Client {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
