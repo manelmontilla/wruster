@@ -198,7 +198,7 @@ mod tests {
             *str_result = String::from("done");
         };
         pool.run(Box::new(action)).unwrap();
-        // Droping the Dynamic ensures the action is finished.
+        // Dropping the Dynamic ensures the action is finished.
         drop(pool);
         let result = &*result.lock().unwrap();
         assert_eq!(result, "done");
@@ -245,7 +245,7 @@ mod tests {
 
         // Signal the first thread to finish.
         sender.send(()).unwrap();
-        // Give time for worker to finish the task and be ready to accept
+        // Give time to the worker to finish the task and be ready to accept
         // another action.
         // TODO: This test could be flaky.
         thread::sleep(Duration::from_secs(1));

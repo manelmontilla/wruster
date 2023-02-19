@@ -3,7 +3,7 @@ use std::fmt::Debug;
 use std::sync::PoisonError;
 use std::{fmt, io};
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Eq, PartialEq)]
 /// Defines the possible errors generated when reading and parsing a Request or a Response.
 pub enum HttpError {
     /// It's generated when any not controlled error is encountered when
@@ -13,7 +13,7 @@ pub enum HttpError {
     /// It's generated when the connection is closed while reading o writing
     /// reading a request.
     ConnectionClosed,
-    /// It's generated when the maximun allowed time to read/write a request or
+    /// It's generated when the maximum allowed time to read/write a request or
     /// response has been exceed.
     Timeout,
     /// It's generated when a syntactic error is found while reading a request.

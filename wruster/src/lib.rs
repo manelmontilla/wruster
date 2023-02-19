@@ -1,4 +1,5 @@
 #![warn(missing_docs)]
+#![warn(rustdoc::broken_intra_doc_links)]
 
 /*!
 Experimental simple web sever that includes a http
@@ -43,8 +44,8 @@ fn main() {
 */
 
 use std::error::Error as StdError;
-use std::io::{Error, ErrorKind};
-use std::net::SocketAddr;
+use std::io::{self, Error, ErrorKind};
+use std::net::{SocketAddr, TcpStream};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -54,14 +55,6 @@ use std::{net, thread};
 
 #[macro_use]
 extern crate log;
-
-/// Contains all the types necessary for dealing with Http messages.
-pub mod http;
-/// Contains the router to be used in a [`Server`].
-pub mod router;
-mod streams;
-mod thread_pool;
-
 use http::errors::HttpError;
 use http::*;
 use polling::{Event, Poller};
@@ -72,7 +65,19 @@ use streams::timeout_stream::TimeoutStream;
 use streams::TrackedStream;
 
 use crate::streams::cancellable_stream::CancellableStream;
-use crate::streams::TrackedStreamList;
+pub use crate::streams::tls::{Certificate, PrivateKey};
+use crate::streams::{tls, TrackedStreamList};
+
+/// Contains all the types necessary for dealing with Http messages.
+pub mod http;
+/// Contains the router to be used in a [`Server`].
+pub mod router;
+
+/// Contains support functions for tests.
+pub mod test_utils;
+
+mod streams;
+mod thread_pool;
 
 /// Defines the default max time for a request to be read
 pub const DEFAULT_READ_REQUEST_TIMEOUT: time::Duration = time::Duration::from_secs(30);
@@ -80,19 +85,19 @@ pub const DEFAULT_READ_REQUEST_TIMEOUT: time::Duration = time::Duration::from_se
 /// Defines the default max time for a response to be written
 pub const DEFAULT_WRITE_RESPONSE_TIMEOUT: time::Duration = time::Duration::from_secs(30);
 
-/// Defines the result type returned from the [``Server``] methods.
+/// Defines the result type returned from the [Server] methods.
 pub type ServerResult = Result<(), Box<dyn StdError>>;
 
-/// Defines the timeouts used in [`Server::from_timeouts`].
+/// Defines the timeouts used in [Server::from_timeouts] method.
 #[derive(Clone)]
 pub struct Timeouts {
-    /// Maximun time for a request to be read
+    /// maximum time for a request to be read
     pub read_request_timeout: time::Duration,
-    /// Maximun time for a request to be written.
+    /// maximum time for a request to be written.
     pub write_response_timeout: time::Duration,
 }
 
-/// Represents a web server that can be run by passing a [`router::Router`].
+/// Represents a web server that can be run by passing a [router::Router].
 pub struct Server {
     stop: Arc<AtomicBool>,
     addr: Option<String>,
@@ -165,7 +170,7 @@ impl Server {
     }
 
     /**
-    Starts a server listening in the specified address and using the given
+    Starts a server listening on the specified address and using the given
     [`Router`], it returns the control immediately to caller.
 
     # Arguments
@@ -201,10 +206,82 @@ impl Server {
     # Errors
 
     This function will return an error if:
-        * The address is wrong formatted or not free.
-        * The server is already started.
+    * The address is wrong formatted or not free.
+    * The server is already started.
     */
     pub fn run(&mut self, addr: &str, routes: Router) -> ServerResult {
+        self.start(addr, routes, move |stream: TcpStream| {
+            CancellableStream::new(stream)
+        })
+    }
+
+    /**
+     Starts a server that accepts TLS connections by listening on the specified address and using the given
+     [`Router`], it returns the control immediately to caller.
+
+     # Arguments
+     * `addr` a string slice specifying the address to listen on, format: "hostname:port"
+
+     * `routes` a [`Router`] with the routes the server must serve.
+
+     * `key` the private key to use in TLS connections.
+
+     * `cert` the certificate to use in TLS connections.
+
+     # Examples
+
+     ```no_run
+     use std::str::FromStr;
+
+     use wruster::{Server, Certificate, PrivateKey};
+     use wruster::http::{self, Request};
+     use wruster::http::Response;
+     use wruster::router;
+     use wruster::router::HttpHandler;
+     let routes = router::Router::new();
+     let handler: HttpHandler = Box::new(move |request: &mut Request| {
+         let body = &mut request.body.as_mut().unwrap();
+         let mut name = String::new();
+         body.content.read_to_string(&mut name).unwrap();
+         let greetings = format!("hello {}!!", name);
+         Response::from_str(&greetings).unwrap()
+     });
+     routes.add("/", http::HttpMethod::GET, handler);
+     let cert = Certificate::read_from("certificate.perm").unwrap();
+     let key = PrivateKey::read_from("private_key.perm").unwrap();
+     let mut server = Server::new();
+     server.run_tls("127.0.0.1:8082", routes, key, cert).unwrap();
+     server.wait().unwrap();
+     ```
+    # Errors
+
+    This function will return an error if:
+    * The address is wrong formatted or not free.
+    * The server is already started.
+
+     */
+    pub fn run_tls(
+        &mut self,
+        addr: &str,
+        routes: Router,
+        key: PrivateKey,
+        cert: Certificate,
+    ) -> ServerResult {
+        self.start(addr, routes, move |stream: TcpStream| {
+            let stream = tls::Stream::new(stream, key.clone(), cert.clone()).unwrap();
+            CancellableStream::new(stream)
+        })
+    }
+
+    fn start<T: BaseStream + Send + Sync + 'static, F>(
+        &mut self,
+        addr: &str,
+        routes: Router,
+        stream_builder: F,
+    ) -> ServerResult
+    where
+        F: Fn(TcpStream) -> io::Result<CancellableStream<T>> + Send + 'static,
+    {
         if self.poller.is_some() {
             return Err(Box::new(Error::new(
                 ErrorKind::Other,
@@ -226,9 +303,23 @@ impl Server {
 
         info!("listening on {}", &addr);
         let routes = Arc::new(routes);
-        let execunits = thread::available_parallelism().unwrap();
-        info!("system reported {} available execution units", execunits);
-        let mut pool = thread_pool::Pool::new(execunits.into(), 100);
+        let execunits = match thread::available_parallelism() {
+            Ok(units) => {
+                info!("system reported {} available execution units", units);
+                usize::from(units)
+            }
+            Err(err) => {
+                let default_value = 2;
+                error!(
+                    "error getting available run units: {}, using default value: {}",
+                    err.to_string(),
+                    default_value
+                );
+                default_value
+            }
+        };
+
+        let mut pool = thread_pool::Pool::new(execunits, 100);
         let stop = Arc::clone(&self.stop);
         let timeouts = self.timeouts.clone();
         let active_streams = TrackedStreamList::new();
@@ -250,7 +341,9 @@ impl Server {
                     info!("accepting connection from {}", src_addr);
                     let cconfig = Arc::clone(&routes);
                     let action_timeouts = timeouts.clone();
-                    let action_stream = match CancellableStream::new(stream) {
+
+                    let stream = stream_builder(stream);
+                    let action_stream = match stream {
                         Ok(stream) => stream,
                         Err(err) => {
                             error!("error cloning stream: {}", err.to_string());
@@ -292,7 +385,7 @@ impl Server {
                 };
             }
             info!("server stopped accepting connections");
-            return Ok(());
+            Ok(())
         });
 
         self.handle = Some(handle);
@@ -349,7 +442,7 @@ impl Server {
                 Ok(()) => Ok(()),
                 Err(error) => {
                     let err = Box::new(Error::new(ErrorKind::Other, error.to_string()));
-                    return Err(err);
+                    Err(err)
                 }
             },
             Err(err) => {
@@ -358,7 +451,7 @@ impl Server {
                     ErrorKind::Other,
                     "error waiting for accepting connections",
                 ));
-                return Err(err);
+                Err(err)
             }
         }
     }
@@ -565,5 +658,5 @@ fn is_connection_persistent(request: &http::Request) -> bool {
     if request.version == "HTTP/1.0" && value == "keep-alive" {
         return true;
     };
-    return false;
+    false
 }

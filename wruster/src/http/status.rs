@@ -106,7 +106,7 @@ impl StatusCode {
             StatusCode::ServiceUnavailable => "Service Unavailable",
             StatusCode::GatewayTimeOut => "Gateway Time-out",
             StatusCode::HTTPVersionNotSupported => "HTTP Version not supported",
-            StatusCode::ExtensionCode(_) => "Extesion code",
+            StatusCode::ExtensionCode(_) => "Extension code",
         }
     }
 }
@@ -264,7 +264,7 @@ impl Clone for StatusCode {
             Self::ServiceUnavailable => Self::ServiceUnavailable,
             Self::GatewayTimeOut => Self::GatewayTimeOut,
             Self::HTTPVersionNotSupported => Self::HTTPVersionNotSupported,
-            Self::ExtensionCode(code) => Self::ExtensionCode(code.clone()),
+            Self::ExtensionCode(code) => Self::ExtensionCode(*code),
         }
     }
 }

@@ -15,7 +15,7 @@ extern crate log;
 fn main() {
     Builder::new().filter_level(LevelFilter::Info).init();
     let routes = router::Router::new();
-    let handler: HttpHandler = Box::new(move |_| Response::from_str("hellow world").unwrap());
+    let handler: HttpHandler = Box::new(move |_| Response::from_str("hello world").unwrap());
     routes.add("/", http::HttpMethod::GET, handler);
     let mut server = Server::new();
     if let Err(err) = server.run("127.0.0.1:8082", routes) {

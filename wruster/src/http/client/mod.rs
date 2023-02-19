@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 use crate::http::*;
 use std::net::SocketAddr;
 use std::net::TcpStream;
@@ -29,7 +30,7 @@ pub struct ClientResponse {
     addr: String,
 }
 
-impl<'a> Deref for ClientResponse {
+impl Deref for ClientResponse {
     type Target = Response;
 
     fn deref(&self) -> &Self::Target {
@@ -47,13 +48,29 @@ impl Drop for ClientResponse {
     fn drop(&mut self) {
         if let Some(pool) = self.pool.upgrade() {
             if let Some(body) = self.response.body.as_mut() {
-                // TODO: Handle possible panic here.
-                body.ensure_read().unwrap();
+                body.ensure_read().consume_error(|err| {
+                    error!(
+                        "error ensuring body in request has completely read: {}",
+                        err
+                    );
+                });
             }
-            // TODO: Handle possible panic here.
-            let pool = pool.lock().unwrap();
-            // TODO: Handle possible panic here.
-            let conn = self.conn.try_clone().unwrap();
+
+            let pool = match pool.lock() {
+                Ok(pool) => pool,
+                Err(_) => {
+                    error!("error getting a lock for a client connection pool");
+                    return;
+                }
+            };
+
+            let conn = match self.conn.try_clone() {
+                Ok(conn) => conn,
+                Err(err) => {
+                    error!("error cloning stream {}", err);
+                    return;
+                }
+            };
             let conn = Arc::new(conn);
             pool.insert(&self.addr, PoolResource::new(conn))
         };
@@ -77,10 +94,10 @@ impl<'a> Client {
                     let pool = self.connection_pool.lock().map_err(HttpError::from)?;
                     match pool.get(addr) {
                         Some(conn) => conn.resource(),
-                        None => Self::connect(addr).map(|stream| Arc::new(stream))?,
+                        None => Self::connect(addr).map(Arc::new)?,
                     }
                 }
-                false => Self::connect(addr).map(|stream| Arc::new(stream))?,
+                false => Self::connect(addr).map(Arc::new)?,
             }
         };
         let read_timeout = DEFAULT_READ_RESPONSE_TIMEOUT;
@@ -89,9 +106,7 @@ impl<'a> Client {
         let conn = conn.try_clone().map_err(HttpError::from)?;
         let response_conn = conn.try_clone().map_err(HttpError::from)?;
         let mut stream = TimeoutStream::from(conn, Some(read_timeout), Some(write_timeout));
-        if let Err(err) = request.write(&mut stream) {
-            return Err(err);
-        };
+        request.write(&mut stream)?;
         stream.flush().map_err(HttpError::from)?;
         let stream = Box::new(stream);
         let response = match Response::read_from(stream) {
@@ -102,7 +117,7 @@ impl<'a> Client {
         // the connection to the pool here.
         let response_pool = Arc::clone(&self.connection_pool);
         let response = ClientResponse {
-            response: response,
+            response,
             conn: response_conn,
             pool: Arc::downgrade(&response_pool),
             addr: addr.to_string(),
@@ -117,6 +132,12 @@ impl<'a> Client {
     }
 }
 
+impl Default for Client {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Drop for Client {
     fn drop(&mut self) {
         let pool = self.connection_pool.lock().unwrap();
@@ -125,6 +146,23 @@ impl Drop for Client {
         for connection in connections {
             let connection = connection.resource();
             _ = connection.shutdown(std::net::Shutdown::Both)
+        }
+    }
+}
+
+trait ConsumeIfError<F, E> {
+    fn consume_error(self, consumer: F)
+    where
+        F: FnOnce(E);
+}
+
+impl<T, E, F> ConsumeIfError<F, E> for Result<T, E> {
+    fn consume_error(self, consumer: F)
+    where
+        F: FnOnce(E),
+    {
+        if let Err(err) = self {
+            consumer(err)
         }
     }
 }

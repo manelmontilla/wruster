@@ -19,7 +19,7 @@ fn client_write_run_post_body() {
 
     assert_eq!(response.status, http::StatusCode::OK);
 
-    server.shutdown().expect("Error shuting down server");
+    server.shutdown().expect("Error shutting down server");
 }
 
 #[test]
@@ -64,7 +64,7 @@ fn client_keep_alive_reuses_connection() {
         .expect("Expected connection to be in the pool");
     drop(connection_pool);
 
-    server.shutdown().expect("Error shuting down server");
+    server.shutdown().expect("Error shutting down server");
 }
 
 fn run_server(handler: HttpHandler, method: HttpMethod, path: &str) -> (Server, String) {

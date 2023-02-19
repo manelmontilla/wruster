@@ -173,8 +173,8 @@ impl Request {
         }
         Request {
             body: Some(body),
-            headers: headers,
-            method: method,
+            headers,
+            method,
             uri: path.to_string(),
             version: Version::HTTP1_1.to_string(),
         }
@@ -204,7 +204,7 @@ impl Request {
         if self.version == "HTTP/1.0" && value == "keep-alive" {
             return true;
         };
-        return false;
+        false
     }
 }
 
@@ -224,7 +224,7 @@ where
         Request {
             body: Some(body),
             headers: Headers::new(),
-            method: method,
+            method,
             uri: url,
             version: Version::HTTP1_1.to_string(),
         }
@@ -398,10 +398,10 @@ impl Body {
         from: T,
         headers: &Headers,
     ) -> Result<Option<Body>, HttpError> {
-        if let Some(encoding) = headers.get("Transfer-Enconding") {
+        if let Some(encoding) = headers.get("Transfer-Encoding") {
             // Transfer-Encoding entity is not supported.
             if encoding.len() != 1 {
-                let msg = "invalid Transfer-Enconding header".to_string();
+                let msg = "invalid Transfer-Encoding header".to_string();
                 return Err(Unknown(msg));
             }
             if encoding[0] != "identity" {
@@ -423,7 +423,7 @@ impl Body {
 
         let len = match usize::from_str(len) {
             Err(err) => {
-                let msg = format!("invalid Content-Length header, {}", err.to_string());
+                let msg = format!("invalid Content-Length header, {}", err);
                 return Err(Unknown(msg));
             }
             Ok(size) => size,
@@ -441,11 +441,7 @@ impl Body {
                 let mtype: mime::Mime = match types[0].parse() {
                     Ok(t) => t,
                     Err(err) => {
-                        let msg = format!(
-                            "invalid Content-Type header, {:?}, {}",
-                            types,
-                            err.to_string()
-                        );
+                        let msg = format!("invalid Content-Type header, {:?}, {}", types, err);
                         return Err(Unknown(msg));
                     }
                 };
@@ -455,7 +451,7 @@ impl Body {
         let c = from.take(len as u64);
         let content = Box::new(c);
         let body = Body {
-            content: content,
+            content,
             content_type,
             content_length: len as u64,
             bytes_read: 0,
@@ -464,7 +460,7 @@ impl Body {
     }
 
     /**
-    Ensures the content length specified in the body is read from the underlaying reader.
+    Ensures the content length specified in the body is read from the underlying reader.
     */
     pub fn ensure_read(&mut self) -> Result<(), HttpError> {
         if self.bytes_read == self.content_length {
@@ -496,7 +492,7 @@ impl Read for Body {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         match self.content.read(buf) {
             Ok(bytes_read) => {
-                self.bytes_read = self.bytes_read + bytes_read as u64;
+                self.bytes_read += bytes_read as u64;
                 Ok(bytes_read)
             }
             Err(err) => Err(err),
@@ -514,11 +510,13 @@ impl fmt::Debug for Body {
     }
 }
 
-/// Used to convert an immutable reference to a Body.
-///
-/// # Examples
-///
-///  TODO
+/**
+Used to convert an immutable reference to a Body.
+
+# Examples
+
+ TODO
+*/
 pub trait IntoBody {
     /// Performs the conversion.
     fn into(self, mime_type: mime::Mime) -> Body;
@@ -706,7 +704,7 @@ impl Response {
     }
 }
 
-impl<'a> FromStr for Response {
+impl FromStr for Response {
     type Err = Infallible;
     fn from_str(content: &str) -> Result<Response, Infallible> {
         let content = Vec::from(content);
@@ -911,7 +909,7 @@ impl MessageChar for char {
         let valid_token_symbols = [
             '!', '#', '$', '%', '&', '\'', '*', '+', '-', '.', '^', '_', '`', '|', '~',
         ];
-        if valid_token_symbols.contains(&self) {
+        if valid_token_symbols.contains(self) {
             return true;
         };
         false

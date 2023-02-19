@@ -19,7 +19,7 @@ impl TcpClient {
     #[allow(dead_code)]
     pub fn send(&mut self, data: &[u8]) -> Result<(), Box<dyn Error>> {
         let stream = self.stream.as_mut().unwrap();
-        stream.write(data)?;
+        stream.write_all(data)?;
         stream.flush()?;
         Ok(())
     }

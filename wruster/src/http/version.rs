@@ -21,10 +21,16 @@ impl fmt::Display for ParseVersionError {
     }
 }
 
+/**
+Represents the HTTP versions considered valid.
+*/
 #[derive(Debug, PartialEq, Eq)]
 pub enum Version {
+    /** HTTP version 1.0*/
     HTTP1_0,
+    /** HTTP version 1.1*/
     HTTP1_1,
+    /** HTTP version 2*/
     HTTP2,
 }
 

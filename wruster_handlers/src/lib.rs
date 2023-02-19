@@ -1,5 +1,5 @@
 /**
-Contains a set of helpfull handlers, middlewares and utilities to create
+Contains a set of helpful handlers, middlewares and utilities to create
 new handlers in a wruster web server.
 */
 use std::fs;
@@ -14,7 +14,7 @@ use wruster::http::{Body, Request, Response, StatusCode};
 use wruster::router::HttpHandler;
 
 /**
-Implents a handler that serves the files in a directory tree.
+Implements a handler that serves the files in a directory tree.
 
 # Examples
 

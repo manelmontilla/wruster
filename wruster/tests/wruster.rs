@@ -1,6 +1,6 @@
 use std::error::Error;
 use std::io::{self, Read, Write};
-use std::net::{Ipv4Addr, Shutdown, SocketAddrV4, TcpListener, TcpStream};
+use std::net::{Shutdown, TcpStream};
 use std::thread;
 use std::time::{self, Duration};
 
@@ -11,6 +11,10 @@ use wruster::http::StatusCode;
 use wruster::router;
 use wruster::router::HttpHandler;
 use wruster::*;
+
+use wruster::test_utils::{
+    get_free_port, load_test_certificate, load_test_private_key, TestTLSClient,
+};
 
 #[test]
 fn server_closes_connection_when_timeout() {
@@ -104,6 +108,63 @@ test";
 }
 
 #[test]
+fn server_tls_handles_requests() {
+    let mut server = Server::new();
+    let routes = router::Router::new();
+    let handler: HttpHandler = Box::new(move |request| {
+        let mut content: Vec<u8> = Vec::new();
+        request
+            .body
+            .as_mut()
+            .unwrap()
+            .content
+            .read_to_end(&mut content)
+            .unwrap();
+        let content = String::from_utf8_lossy(&content);
+        if &content == "test" {
+            Response::from_status(StatusCode::OK)
+        } else {
+            Response::from_status(StatusCode::InternalServerError)
+        }
+    });
+    let port = get_free_port();
+    let addr = format!("127.0.0.1:{}", port.to_string());
+    routes.add("/", http::HttpMethod::POST, handler);
+
+    let key = load_test_private_key().unwrap();
+    let cert = load_test_certificate().unwrap();
+    server.run_tls(&addr, routes, key, cert).unwrap();
+
+    thread::sleep(time::Duration::from_secs(1));
+
+    let mut client = TestTLSClient::new("localhost", port).unwrap();
+    let request = "POST / HTTP/1.1\r\n\
+Content-Length: 4\r\n\
+\r\n\
+test";
+    client.write(request.as_bytes()).unwrap();
+
+    let response = Response::read_from(client.stream).unwrap();
+    assert_eq!(response.status, StatusCode::OK);
+    let got_headers = response
+        .headers
+        .iter()
+        .collect::<Vec<(&String, &Vec<String>)>>();
+    let mut want_headers = Headers::new();
+    let header = Header {
+        name: "Content-Length".to_string(),
+        value: "0".to_string(),
+    };
+    want_headers.add(header);
+    let want_headers = want_headers
+        .iter()
+        .collect::<Vec<(&String, &Vec<String>)>>();
+    assert_eq!(got_headers, want_headers);
+    assert!(response.body.is_none());
+    server.shutdown().unwrap()
+}
+
+#[test]
 fn server_shutdowns() {
     let mut server = Server::new();
     let routes = router::Router::new();
@@ -172,13 +233,4 @@ impl Drop for TcpClient {
     fn drop(&mut self) {
         let _ = self.close();
     }
-}
-
-fn get_free_port() -> u16 {
-    let addr = SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0);
-    TcpListener::bind(addr)
-        .unwrap()
-        .local_addr()
-        .unwrap()
-        .port()
 }

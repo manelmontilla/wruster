@@ -160,7 +160,7 @@ impl Headers {
     # Errors
 
     This function will return an error if there is any problem
-    writting ``to`` parameter.
+    writing ``to`` parameter.
     */
     pub fn write<T: io::Write>(&self, to: &mut T) -> HttpResult<()> {
         // generic-message = start-line
@@ -350,7 +350,7 @@ impl Header {
         //                   [ message-body ]
         // header-field   = field-name ":" OWS field-value OWS
         // field-name     = token
-        let mut written = to.write_all(&self.name.as_bytes());
+        let mut written = to.write_all(self.name.as_bytes());
         if let Err(err) = written {
             debug!("error writing Header: {:?}", err);
             return Err(HttpError::Unknown(err.to_string()));

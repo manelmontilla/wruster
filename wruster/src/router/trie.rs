@@ -69,7 +69,7 @@ impl<T> Node<T> {
         children
     }
 
-    fn add_value_to_children(children: &mut Vec<Option<Node<T>>>, key: &[u8], value: T) {
+    fn add_value_to_children(children: &mut [Option<Node<T>>], key: &[u8], value: T) {
         let next = key[0] as usize;
         if children[next].is_none() {
             let new_node = Node::<T>::new();

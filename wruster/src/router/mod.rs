@@ -52,7 +52,7 @@ impl Router {
             Some(route_actions) => route_actions,
         };
         router_handlers.actions.borrow_mut()[method as usize] = Some(Arc::new(action));
-        routes.add_value(&route.as_bytes(), router_handlers);
+        routes.add_value(route.as_bytes(), router_handlers);
     }
 
     #[allow(dead_code)]
