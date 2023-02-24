@@ -142,7 +142,7 @@ impl Dynamic {
                 None => action,
             };
         }
-        Err(PoolError::Busy(action))
+        Err(PoolError { action })
     }
 
     #[allow(dead_code)]

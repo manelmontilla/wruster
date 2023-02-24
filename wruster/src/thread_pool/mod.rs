@@ -9,15 +9,13 @@ type Action = Box<dyn FnOnce() + Send + 'static>;
 
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(10);
 
-pub enum PoolError {
-    Busy(Action),
+pub struct PoolError {
+    pub action: Action,
 }
 
 impl Debug for PoolError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Busy(_) => write!(f, "Debug"),
-        }
+        write!(f, "PoolError")
     }
 }
 
@@ -45,14 +43,12 @@ impl Pool {
         if let Some(stat) = self.stat.as_mut() {
             action = match stat.run(action) {
                 Ok(_) => return Ok(()),
-                Err(err) => match err {
-                    PoolError::Busy(action) => action,
-                },
+                Err(err) => err.action,
             };
         };
         match self.dynamic.as_mut() {
             Some(dynamic) => dynamic.run(action),
-            None => Err(PoolError::Busy(action)),
+            None => Err(PoolError { action }),
         }
     }
 }

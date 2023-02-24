@@ -96,7 +96,7 @@ impl Static {
             };
             from = (from + 1) % self.size;
             if from == self.next {
-                return Err(PoolError::Busy(action));
+                return Err(PoolError { action });
             }
         }
         self.next = from;
