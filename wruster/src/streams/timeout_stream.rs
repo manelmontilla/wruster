@@ -1,6 +1,5 @@
 use std::io::{self, ErrorKind, Read, Write};
 use std::net::TcpStream;
-use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use super::cancellable_stream::{BaseStream, CancellableStream};
@@ -57,50 +56,6 @@ where
 
     fn set_write_timeout(&self, dur: Option<Duration>) -> io::Result<()> {
         self.set_write_timeout(dur)
-    }
-}
-
-pub struct ArcStream<T>(Arc<CancellableStream<T>>)
-where
-    T: BaseStream;
-
-impl<T> Timeout for &ArcStream<T>
-where
-    T: BaseStream,
-{
-    fn set_read_timeout(&self, dur: Option<Duration>) -> io::Result<()> {
-        let s = &*self.0;
-        s.set_read_timeout(dur)
-    }
-
-    fn set_write_timeout(&self, dur: Option<Duration>) -> io::Result<()> {
-        let s = &*self.0;
-        s.set_write_timeout(dur)
-    }
-}
-
-impl<T> Read for &ArcStream<T>
-where
-    T: BaseStream,
-{
-    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        let mut s = &*self.0;
-        s.read(buf)
-    }
-}
-
-impl<T> Write for &ArcStream<T>
-where
-    T: BaseStream,
-{
-    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        let mut s = &*self.0;
-        s.write(buf)
-    }
-
-    fn flush(&mut self) -> io::Result<()> {
-        let mut s = &*self.0;
-        s.flush()
     }
 }
 
