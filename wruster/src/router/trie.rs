@@ -40,7 +40,7 @@ impl<T> Trie<T> {
         child.move_value_out(&key[1..])
     }
 
-    pub fn get_value_prefix<'a>(&'a self, key: &[u8]) -> Option<&T> {
+    pub fn get_value_prefix(&self, key: &[u8]) -> Option<&T> {
         if key.is_empty() {
             return None;
         }

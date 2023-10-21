@@ -114,7 +114,7 @@ where
         let read_timeout = RwLock::new(None);
         let write_timeout = RwLock::new(None);
         let done = atomic::AtomicBool::new(false);
-        poller.add(&stream.as_raw(), Event::all(1))?;
+        poller.add(stream.as_raw(), Event::all(1))?;
         Ok(CancellableStream {
             stream,
             done,
@@ -148,7 +148,7 @@ where
     fn read_int(&self, buf: &mut [u8]) -> io::Result<usize> {
         debug!("read int");
         self.poller
-            .modify(&self.stream.as_raw(), Event::readable(1))?;
+            .modify(self.stream.as_raw(), Event::readable(1))?;
         let mut events = Vec::new();
         let timeout = &self.read_timeout.write().unwrap().clone();
         let mut bytes_read = 0;
@@ -202,7 +202,7 @@ where
 
     fn write_int(&self, buf: &[u8]) -> io::Result<usize> {
         self.poller
-            .modify(&self.stream.as_raw(), Event::writable(1))?;
+            .modify(self.stream.as_raw(), Event::writable(1))?;
         let mut events = Vec::new();
         let timeout = &self.write_timeout.write().unwrap().clone();
         let mut bytes_written = 0;

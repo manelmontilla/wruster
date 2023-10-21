@@ -199,7 +199,7 @@ impl PrivateKey {
         * There are no privates keys stored in the file.
     */
     pub fn read_from(path: &str) -> io::Result<PrivateKey> {
-        let keyfile = std::fs::File::open(&path).map_err(|err| {
+        let keyfile = std::fs::File::open(path).map_err(|err| {
             if err.kind() == io::ErrorKind::NotFound {
                 io::Error::new(io::ErrorKind::Other, format!("no file found in {} ", path))
             } else {

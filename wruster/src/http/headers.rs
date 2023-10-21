@@ -382,7 +382,7 @@ fn normalize_header_name(name: String) -> String {
     let mut next_alfanum_upper = true;
     for c in name.chars() {
         if c.is_ascii_alphanumeric() && next_alfanum_upper {
-            normalized.push(c.to_ascii_uppercase() as char);
+            normalized.push(c.to_ascii_uppercase());
             next_alfanum_upper = false;
             continue;
         };
