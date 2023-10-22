@@ -9,7 +9,7 @@ use std::{
 
 use rustls::{self, ServerConfig, ServerConnection, StreamOwned};
 
-use super::cancellable_stream::BaseStream;
+use super::BaseStream;
 
 pub mod test_utils;
 

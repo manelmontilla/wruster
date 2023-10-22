@@ -1,100 +1,15 @@
-use super::tls;
+use super::BaseStream;
 use crate::log::debug;
-use polling::{Event, Source};
-use std::io::Read;
-use std::io::{self, Write};
-use std::net::{Shutdown, TcpStream};
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{atomic, Arc, RwLock};
-use std::time::Duration;
-
-pub trait BaseStream {
-    fn set_nonblocking(&self, nonblocking: bool) -> io::Result<()>;
-    fn shutdown(&self, how: Shutdown) -> io::Result<()>;
-    fn set_read_timeout(&self, dur: Option<Duration>) -> io::Result<()>;
-    fn set_write_timeout(&self, dur: Option<Duration>) -> io::Result<()>;
-    fn as_raw(&self) -> std::os::unix::prelude::RawFd;
-    fn write_buf(&self, buf: &[u8]) -> io::Result<usize>;
-    fn read_buf(&self, buf: &mut [u8]) -> io::Result<usize>;
-    fn flush_data(&self) -> io::Result<()>;
-}
-
-pub trait Stream: Send + Sync + BaseStream {}
-
-impl BaseStream for TcpStream {
-    fn set_nonblocking(&self, nonblocking: bool) -> io::Result<()> {
-        self.set_nonblocking(nonblocking)
-    }
-
-    fn shutdown(&self, how: Shutdown) -> io::Result<()> {
-        self.shutdown(how)
-    }
-
-    fn set_read_timeout(&self, dur: Option<Duration>) -> io::Result<()> {
-        self.set_read_timeout(dur)
-    }
-
-    fn set_write_timeout(&self, dur: Option<Duration>) -> io::Result<()> {
-        self.set_write_timeout(dur)
-    }
-
-    fn as_raw(&self) -> std::os::unix::prelude::RawFd {
-        self.raw()
-    }
-
-    fn write_buf(&self, buf: &[u8]) -> io::Result<usize> {
-        let mut s = self;
-        <&Self as Write>::write(&mut s, buf)
-    }
-
-    fn read_buf(&self, buf: &mut [u8]) -> io::Result<usize> {
-        let mut s = self;
-        <&Self as Read>::read(&mut s, buf)
-    }
-
-    fn flush_data(&self) -> io::Result<()> {
-        let mut s = self;
-        <&Self as Write>::flush(&mut s)
-    }
-}
-
-impl Stream for TcpStream {}
-
-impl BaseStream for tls::Stream {
-    fn set_nonblocking(&self, nonblocking: bool) -> io::Result<()> {
-        self.set_nonblocking(nonblocking)
-    }
-
-    fn shutdown(&self, how: Shutdown) -> io::Result<()> {
-        self.shutdown(how)
-    }
-
-    fn set_read_timeout(&self, dur: Option<Duration>) -> io::Result<()> {
-        self.set_read_timeout(dur)
-    }
-
-    fn set_write_timeout(&self, dur: Option<Duration>) -> io::Result<()> {
-        self.set_write_timeout(dur)
-    }
-
-    fn as_raw(&self) -> std::os::unix::prelude::RawFd {
-        self.as_raw()
-    }
-
-    fn write_buf(&self, buf: &[u8]) -> io::Result<usize> {
-        self.write_int(buf)
-    }
-
-    fn read_buf(&self, buf: &mut [u8]) -> io::Result<usize> {
-        self.read_int(buf)
-    }
-
-    fn flush_data(&self) -> io::Result<()> {
-        self.flush_data()
-    }
-}
-
-impl Stream for tls::Stream {}
+use polling::Event;
+use std::{
+    io,
+    net::Shutdown,
+    sync::{
+        atomic::{self, AtomicBool, Ordering},
+        Arc, RwLock,
+    },
+    time::Duration,
+};
 
 pub struct CancellableStream<T: BaseStream> {
     stream: T,
@@ -134,10 +49,6 @@ where
         let mut write_timeout = self.write_timeout.write().unwrap();
         *write_timeout = dur;
         Ok(())
-    }
-
-    pub fn cancel(&self) -> io::Result<()> {
-        self.poller.notify()
     }
 
     pub fn shutdown(&self, how: Shutdown) -> io::Result<()> {
@@ -186,7 +97,7 @@ where
 
             // TODO: Actually this is not correct, we should read all the
             // events returned by wait, even if we end up reading more bytes
-            // than the len of the buffer provider by the caller.
+            // than the len of the buffer provide by the caller.
             if bytes_read == buf_len {
                 break;
             }
