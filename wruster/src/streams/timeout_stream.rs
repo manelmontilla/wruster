@@ -1,8 +1,10 @@
-use std::io::{self, ErrorKind, Read, Write};
-use std::net::TcpStream;
-use std::time::{Duration, Instant};
+use std::{
+    io::{self, ErrorKind, Read, Write},
+    net::TcpStream,
+    time::{Duration, Instant},
+};
 
-use super::cancellable_stream::{BaseStream, CancellableStream};
+use super::{cancellable_stream::CancellableStream, BaseStream};
 
 pub trait Timeout {
     fn set_read_timeout(&self, dur: Option<Duration>) -> io::Result<()>;

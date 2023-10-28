@@ -1,19 +1,27 @@
-use super::*;
-use crate::streams::timeout_stream::TimeoutStream;
-use crate::streams::tls::test_utils::*;
+use super::{
+    cancellable_stream::CancellableStream,
+    observable::ObservedStreamList,
+    test_utils::{get_free_port, TcpClient},
+    timeout_stream::TimeoutStream,
+    tls::test_utils::*,
+    *,
+};
+
 use crate::test_utils::TestTLSClient;
-
-use std::io::{BufRead, BufReader, ErrorKind, Read, Write};
-use std::net::{Shutdown, TcpListener};
-use std::str::FromStr;
-use std::sync::atomic::AtomicBool;
-use std::thread;
-
-use std::time::Duration;
-use test_utils::{get_free_port, TcpClient};
+use std::{
+    io::{BufRead, BufReader, ErrorKind, Read, Write},
+    net::{Shutdown, TcpListener},
+    str::FromStr,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
+    thread,
+    time::Duration,
+};
 
 #[test]
-fn shutdown_stops_reading() {
+fn cancellable_stream_shutdown_stops_reading() {
     let port = get_free_port();
     let addr = format!("127.0.0.1:{}", port);
     let listener = TcpListener::bind(addr.clone()).unwrap();
@@ -53,7 +61,7 @@ fn shutdown_stops_reading() {
 }
 
 #[test]
-fn read_reads_data() {
+fn cancellable_stream_read_reads_data() {
     let port = get_free_port();
     let addr = format!("127.0.0.1:{}", port);
     let listener = TcpListener::bind(addr.clone()).unwrap();
@@ -74,8 +82,7 @@ fn read_reads_data() {
 }
 
 #[test]
-fn read_honors_timeout() {
-    //env::set_var("RUST_LOG", "debug");
+fn cancellable_steeam_read_honors_timeout() {
     env_logger::init();
     let port = get_free_port();
     let addr = format!("127.0.0.1:{}", port);
@@ -100,7 +107,7 @@ fn read_honors_timeout() {
 }
 
 #[test]
-fn write_writes_data() {
+fn cancellable_stream_write_writes_data() {
     let data = "test ";
     let port = get_free_port();
     let addr = format!("127.0.0.1:{}", port);
@@ -130,7 +137,7 @@ fn write_writes_data() {
 }
 
 #[test]
-fn test_shutdown_list() {
+fn observed_stream_list_removes_stream() {
     let port = get_free_port();
     let addr = format!("127.0.0.1:{}", port);
     let listener = TcpListener::bind(addr.clone()).unwrap();
@@ -138,8 +145,8 @@ fn test_shutdown_list() {
     let handle = thread::spawn(move || {
         let (stream, _) = listener.accept().unwrap();
         let cstream = CancellableStream::new(stream).unwrap();
-        let track_list = TrackedStreamList::new();
-        let stream_tracked = TrackedStreamList::track(&track_list, cstream);
+        let track_list = ObservedStreamList::new();
+        let stream_tracked = ObservedStreamList::track(&track_list, cstream);
         let cstream2 = stream_tracked.clone();
         assert_eq!(1, track_list.len());
         let handle = thread::spawn(move || {
@@ -182,7 +189,7 @@ fn tls_stream_read_reads_data() {
 }
 
 #[test]
-fn test_shutdown_list_tls() {
+fn observed_stream_list_tracks_tls_streams() {
     let port = get_free_port();
     let addr = format!("127.0.0.1:{}", port);
     let listener = TcpListener::bind(addr.clone()).unwrap();
@@ -193,8 +200,8 @@ fn test_shutdown_list_tls() {
         let cert = load_test_certificate().unwrap();
         let stream = tls::Stream::new(stream, key, cert).unwrap();
         let cstream = CancellableStream::new(stream).unwrap();
-        let track_list = TrackedStreamList::new();
-        let stream_tracked = TrackedStreamList::track(&track_list, cstream);
+        let track_list = ObservedStreamList::new();
+        let stream_tracked = ObservedStreamList::track(&track_list, cstream);
         let cstream2 = stream_tracked.clone();
         assert_eq!(1, track_list.len());
         let handle = thread::spawn(move || {

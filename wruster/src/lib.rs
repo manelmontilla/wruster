@@ -60,14 +60,14 @@ use http::*;
 use polling::{Event, Poller};
 use router::{Normalize, Router};
 
-use streams::cancellable_stream::BaseStream;
-use streams::timeout_stream::TimeoutStream;
-use streams::TrackedStream;
+use streams::{
+    cancellable_stream::CancellableStream,
+    observable::{ObservedStream, ObservedStreamList},
+    timeout_stream::TimeoutStream,
+    tls, Stream,
+};
 
-use crate::streams::cancellable_stream::CancellableStream;
-pub use crate::streams::tls::{Certificate, PrivateKey};
-use crate::streams::{tls, TrackedStreamList};
-
+pub use streams::tls::{Certificate, PrivateKey};
 /// Contains all the types necessary for dealing with Http messages.
 pub mod http;
 /// Contains the router to be used in a [`Server`].
@@ -273,7 +273,7 @@ impl Server {
         })
     }
 
-    fn start<T: BaseStream + Send + Sync + 'static, F>(
+    fn start<T: Stream + Send + Sync + 'static, F>(
         &mut self,
         addr: &str,
         routes: Router,
@@ -322,7 +322,7 @@ impl Server {
         let mut pool = thread_pool::Pool::new(execunits, 100);
         let stop = Arc::clone(&self.stop);
         let timeouts = self.timeouts.clone();
-        let active_streams = TrackedStreamList::new();
+        let active_streams = ObservedStreamList::new();
         let handle = thread::spawn(move || {
             loop {
                 debug!("tracked streams {}", active_streams.len());
@@ -350,7 +350,7 @@ impl Server {
                             continue;
                         }
                     };
-                    let action_stream = TrackedStreamList::track(&active_streams, action_stream);
+                    let action_stream = ObservedStreamList::track(&active_streams, action_stream);
                     let local_action_stream = action_stream.clone();
                     let action = move || {
                         handle_conversation(
@@ -506,9 +506,9 @@ impl Default for Server {
     }
 }
 
-fn handle_busy<T>(stream: TrackedStream<T>, timeouts: Timeouts, src_addr: SocketAddr)
+fn handle_busy<T>(stream: ObservedStream<T>, timeouts: Timeouts, src_addr: SocketAddr)
 where
-    T: BaseStream,
+    T: Stream,
 {
     debug!("sending too busy to {}", src_addr);
     let write_timeout = Some(timeouts.write_response_timeout);
@@ -527,12 +527,12 @@ where
 }
 
 fn handle_conversation<T>(
-    mut stream: TrackedStream<T>,
+    mut stream: ObservedStream<T>,
     routes: Arc<Router>,
     timeouts: Timeouts,
     source_addr: SocketAddr,
 ) where
-    T: BaseStream + 'static,
+    T: Stream + 'static,
 {
     debug!("handling conversation with {}", source_addr);
     let mut connection_open = true;
@@ -558,13 +558,13 @@ fn handle_conversation<T>(
 }
 
 fn handle_connection<T>(
-    stream: TrackedStream<T>,
+    stream: ObservedStream<T>,
     routes: Arc<Router>,
     source_addr: SocketAddr,
     timeouts: Timeouts,
 ) -> bool
 where
-    T: BaseStream + 'static,
+    T: Stream + 'static,
 {
     let connection_open: bool;
     let read_timeout = Some(timeouts.read_request_timeout);
