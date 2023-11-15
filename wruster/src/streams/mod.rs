@@ -1,11 +1,14 @@
 /*!
 Contains various types that augment a type that can act as a [Stream], e.g.: a [std::net::TcpStream].
 */
-use polling::Source;
+
 use std::io::Read;
 use std::io::{self, Write};
 use std::net::{Shutdown, TcpStream};
+use std::os::fd::{BorrowedFd, AsFd};
 use std::time::Duration;
+
+use polling::{AsRawSource, AsSource};
 
 pub mod cancellable_stream;
 pub mod observable;
@@ -18,6 +21,7 @@ pub trait BaseStream {
     fn set_read_timeout(&self, dur: Option<Duration>) -> io::Result<()>;
     fn set_write_timeout(&self, dur: Option<Duration>) -> io::Result<()>;
     fn as_raw(&self) -> std::os::unix::prelude::RawFd;
+    fn as_fd(&self) -> BorrowedFd<'_>;
     fn write_buf(&self, buf: &[u8]) -> io::Result<usize>;
     fn read_buf(&self, buf: &mut [u8]) -> io::Result<usize>;
     fn flush_data(&self) -> io::Result<()>;
@@ -58,6 +62,10 @@ impl BaseStream for TcpStream {
         let mut s = self;
         <&Self as Write>::flush(&mut s)
     }
+
+    fn as_fd(&self) -> BorrowedFd<'_> {
+        AsFd::as_fd(self)
+    }
 }
 
 impl BaseStream for tls::Stream {
@@ -92,7 +100,12 @@ impl BaseStream for tls::Stream {
     fn flush_data(&self) -> io::Result<()> {
         self.flush_data()
     }
+
+    fn as_fd(&self) -> BorrowedFd<'_> {
+        self.as_fd()
+    }
 }
+
 
 /**
  Defines the shape type that can act as a Stream so its functionality can be extended

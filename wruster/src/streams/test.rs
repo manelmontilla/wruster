@@ -17,7 +17,7 @@ use std::{
         Arc,
     },
     thread,
-    time::Duration, fs::{File, self}, path::PathBuf,
+    time::Duration, fs::{File, self}, path::PathBuf, os::fd::AsFd,
 };
 
 #[test]
@@ -117,6 +117,7 @@ fn cancellable_stream_write_writes_data() {
         let mut cstream = CancellableStream::new(stream).unwrap();
         let mut data = Vec::new();
         server_data.read_to_end(&mut data).unwrap();
+        
         cstream.write(&data)
     });
 

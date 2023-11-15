@@ -1,6 +1,6 @@
 use super::BaseStream;
 use crate::log::debug;
-use polling::Event;
+use polling::{Event, Events, AsSource};
 use std::{
     io,
     net::Shutdown,
@@ -8,7 +8,7 @@ use std::{
         atomic::{self, AtomicBool, Ordering},
         Arc, RwLock,
     },
-    time::Duration, os::macos::raw,
+    time::Duration, os::{fd::{AsRawFd, BorrowedFd, AsFd}},
 };
 
 pub struct CancellableStream<T: BaseStream> {
@@ -29,7 +29,9 @@ where
         let read_timeout = RwLock::new(None);
         let write_timeout = RwLock::new(None);
         let done = atomic::AtomicBool::new(false);
+        unsafe {
         poller.add(stream.as_raw(), Event::all(1))?;
+        }
         Ok(CancellableStream {
             stream,
             done,
@@ -59,11 +61,12 @@ where
     fn read_int(&self, buf: &mut [u8]) -> io::Result<usize> {
         debug!("read int");
         self.poller
-            .modify(self.stream.as_raw(), Event::readable(1))?;
-        let mut events = Vec::new();
+            .modify(&self, Event::readable(1))?;
+        let mut events = Events::new();
         let timeout = &self.read_timeout.write().unwrap().clone();
         let mut bytes_read = 0;
         let buf_len = buf.len();
+        
         if self.poller.wait(&mut events, *timeout)? == 0 {
             let stop = self.done.load(atomic::Ordering::SeqCst);
             if stop {
@@ -75,7 +78,7 @@ where
             // if the timeout period has passed, and if not, retry the wait.
             return Err(io::Error::from(io::ErrorKind::TimedOut));
         }
-        for evt in &events {
+        for evt in events.iter() {
             if evt.key != 1 {
                 continue;
             }
@@ -112,7 +115,7 @@ where
     }
 
     fn write_int(&self, buf: &[u8]) -> io::Result<usize> {
-        let mut events = Vec::new();
+        let mut events = Events::new();
         let timeout = &self.write_timeout.write().unwrap().clone();
         let mut bytes_written = 0;
         let buf_len = buf.len();
@@ -122,8 +125,8 @@ where
             events.clear();
             // self.poller.modify(raw_stream, Event::writable(1))?;
             self.poller
-            .modify(raw_stream, Event::all(1))?;
-        
+            .modify(&self, Event::all(1))?;
+
             if self.poller.wait(&mut events, *timeout)? == 0 {
                 let stop = self.done.load(atomic::Ordering::SeqCst);
                 if stop {
@@ -136,7 +139,7 @@ where
                 // if not, retry the wait.
                 return Err(io::Error::from(io::ErrorKind::TimedOut));
             }
-            for evt in &events {
+            for evt in events.iter() {
                 if evt.key != 1 || !evt.writable {
                     continue;
                 }
@@ -207,5 +210,11 @@ where
 
     fn flush(&mut self) -> io::Result<()> {
         self.stream.flush_data()
+    }
+}
+
+impl<T> AsFd for CancellableStream<T> where T: BaseStream{
+    fn as_fd(&self) -> BorrowedFd<'_> {
+        self.stream.as_fd()
     }
 }

@@ -57,7 +57,7 @@ use std::{net, thread};
 extern crate log;
 use http::errors::HttpError;
 use http::*;
-use polling::{Event, Poller};
+use polling::{Event, Poller, Events};
 use router::{Normalize, Router};
 
 use streams::{
@@ -295,11 +295,13 @@ impl Server {
         };
         listener.set_nonblocking(true).unwrap();
         let poller = polling::Poller::new().unwrap();
-        poller.add(&listener, Event::readable(1)).unwrap();
+        unsafe {
+            poller.add(&listener, Event::readable(1)).unwrap();
+        }
         let poller = Arc::new(poller);
         let epoller = Arc::clone(&poller);
         self.poller = Some(poller);
-        let mut events = Vec::new();
+        let mut events = Events::new();
 
         info!("listening on {}", &addr);
         let routes = Arc::new(routes);
@@ -328,7 +330,7 @@ impl Server {
                 debug!("tracked streams {}", active_streams.len());
                 events.clear();
                 epoller.wait(&mut events, None)?;
-                for evt in &events {
+                for evt in events.iter() {
                     if evt.key != 1 {
                         continue;
                     }
