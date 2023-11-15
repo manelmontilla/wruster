@@ -8,7 +8,7 @@ use std::{
         atomic::{self, AtomicBool, Ordering},
         Arc, RwLock,
     },
-    time::Duration,
+    time::Duration, os::macos::raw,
 };
 
 pub struct CancellableStream<T: BaseStream> {
@@ -112,13 +112,18 @@ where
     }
 
     fn write_int(&self, buf: &[u8]) -> io::Result<usize> {
-        self.poller
-            .modify(self.stream.as_raw(), Event::writable(1))?;
         let mut events = Vec::new();
         let timeout = &self.write_timeout.write().unwrap().clone();
         let mut bytes_written = 0;
         let buf_len = buf.len();
+        let raw_stream = self.stream.as_raw();
+
         while bytes_written < buf_len {
+            events.clear();
+            // self.poller.modify(raw_stream, Event::writable(1))?;
+            self.poller
+            .modify(raw_stream, Event::all(1))?;
+        
             if self.poller.wait(&mut events, *timeout)? == 0 {
                 let stop = self.done.load(atomic::Ordering::SeqCst);
                 if stop {
@@ -132,24 +137,28 @@ where
                 return Err(io::Error::from(io::ErrorKind::TimedOut));
             }
             for evt in &events {
-                if evt.key != 1 {
+                if evt.key != 1 || !evt.writable {
                     continue;
                 }
                 let write_buf = &buf[bytes_written..];
                 let s = &self.stream;
                 match s.write_buf(write_buf) {
-                    Ok(n) => bytes_written += n,
-                    Err(err) if err.kind() == io::ErrorKind::WouldBlock => continue,
+                    Ok(n) => {
+                        bytes_written += n;
+                        println!("bytes written: {:?} of {:?}\n", bytes_written, buf_len)
+                    }
+                    Err(err) if err.kind() == io::ErrorKind::WouldBlock => {
+                        println!("would block");
+                        break
+                    }
                     Err(err) => {
-                        self.stream.set_nonblocking(false)?;
+                        // self.stream.set_nonblocking(false)?;
+                        println!("error writing: {:?}\n", err);
                         return Err(err);
                     }
                 };
-                if bytes_written == buf_len {
-                    break;
-                }
+                break;
             }
-            events.clear();
         }
         Ok(bytes_written)
     }

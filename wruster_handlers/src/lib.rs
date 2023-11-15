@@ -68,11 +68,7 @@ pub fn serve_static(dir: &str, request: &Request) -> Response {
     };
     let mime_type = mime_guess::from_path(path).first_or_octet_stream();
     let mut headers = Headers::new();
-    // let content: Box<dyn Read> = Box::new(BufReader::new(content));
-    let mut data: Vec<u8> = Vec::with_capacity(metadata.len().try_into().unwrap());
-    content.read(&mut data).unwrap();
-    let content: Box<dyn Read> = Box::new(Cursor::new(data));
-    // let content: Box<dyn Read> = Box::new(BufReader::with_capacity(30 * (2 ^ 20), content));
+    let content: Box<dyn Read> = Box::new(content);
     headers.add(Header {
         name: String::from("Content-Length"),
         value: metadata.len().to_string(),
