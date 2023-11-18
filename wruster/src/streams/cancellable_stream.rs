@@ -1,5 +1,4 @@
 use super::BaseStream;
-use crate::log::debug;
 use polling::Event;
 use std::{
     io,
@@ -29,7 +28,6 @@ where
         let read_timeout = RwLock::new(None);
         let write_timeout = RwLock::new(None);
         let done = atomic::AtomicBool::new(false);
-        poller.add(stream.as_raw(), Event::all(1))?;
         Ok(CancellableStream {
             stream,
             done,
@@ -57,7 +55,6 @@ where
     }
 
     fn read_int(&self, buf: &mut [u8]) -> io::Result<usize> {
-        debug!("read int");
         self.poller
             .modify(self.stream.as_raw(), Event::readable(1))?;
         let mut events = Vec::new();
@@ -112,13 +109,14 @@ where
     }
 
     fn write_int(&self, buf: &[u8]) -> io::Result<usize> {
-        self.poller
-            .modify(self.stream.as_raw(), Event::writable(1))?;
         let mut events = Vec::new();
         let timeout = &self.write_timeout.write().unwrap().clone();
         let mut bytes_written = 0;
         let buf_len = buf.len();
         while bytes_written < buf_len {
+            events.clear();
+            self.poller
+                .modify(self.stream.as_raw(), Event::writable(1))?;
             if self.poller.wait(&mut events, *timeout)? == 0 {
                 let stop = self.done.load(atomic::Ordering::SeqCst);
                 if stop {
@@ -132,24 +130,25 @@ where
                 return Err(io::Error::from(io::ErrorKind::TimedOut));
             }
             for evt in &events {
-                if evt.key != 1 {
+                if evt.key != 1 || !evt.writable {
                     continue;
                 }
                 let write_buf = &buf[bytes_written..];
                 let s = &self.stream;
                 match s.write_buf(write_buf) {
-                    Ok(n) => bytes_written += n,
-                    Err(err) if err.kind() == io::ErrorKind::WouldBlock => continue,
+                    Ok(n) => {
+                        bytes_written += n;
+                    }
+                    Err(err) if err.kind() == io::ErrorKind::WouldBlock => {
+                        break;
+                    }
                     Err(err) => {
                         self.stream.set_nonblocking(false)?;
                         return Err(err);
                     }
                 };
-                if bytes_written == buf_len {
-                    break;
-                }
+                break;
             }
-            events.clear();
         }
         Ok(bytes_written)
     }

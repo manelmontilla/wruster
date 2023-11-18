@@ -1,7 +1,9 @@
 use std::{
     error::Error,
+    fs::{self, File},
     io::{self, Read, Write},
     net::{Ipv4Addr, Shutdown, SocketAddrV4, TcpListener, TcpStream},
+    path::PathBuf,
 };
 
 pub struct TcpClient {
@@ -56,4 +58,22 @@ pub fn get_free_port() -> u16 {
         .local_addr()
         .unwrap()
         .port()
+}
+
+#[allow(dead_code)]
+pub fn load_test_file(name: &str) -> Result<File, io::Error> {
+    let mut file_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    file_path.push("tests/assets");
+    file_path.push(name);
+    let file = fs::File::open(&file_path).unwrap();
+    return Ok(file);
+}
+
+#[allow(dead_code)]
+pub fn test_file_size(name: &str) -> Result<u64, io::Error> {
+    let mut file_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    file_path.push("tests/assets");
+    file_path.push(name);
+    let metadata = fs::metadata(&file_path).unwrap();
+    return Ok(metadata.len());
 }

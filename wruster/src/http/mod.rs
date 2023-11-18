@@ -1,4 +1,4 @@
-use std::io::{self, BufReader};
+use std::io::{self, BufReader, BufWriter};
 use std::io::{prelude::*, Cursor};
 
 use std::convert::Infallible;
@@ -370,10 +370,23 @@ impl Body {
     */
     pub fn write<T: io::Write>(&mut self, to: &mut T) -> HttpResult<()> {
         let src = &mut self.content;
-        if let Err(err) = io::copy(src, to) {
-            return Err(HttpError::Unknown(err.to_string()));
+
+        // When the content to write is large (>2MB's) the io::copy function
+        // uses buffers that are too short, to avoid that we use this technique:
+        // https://github.com/rust-lang/rust/pull/78641 to set the buffer to
+        // 1MB.
+        let res = match self.content_length {
+            x if x > u64::pow(2, 20) * 2 => {
+                let buff_size = usize::pow(2, 20);
+                let mut dest = BufWriter::with_capacity(buff_size, to);
+                io::copy(src, &mut dest)
+            }
+            _ => io::copy(src, to),
         };
-        Ok(())
+        match res {
+            Err(err) => Err(HttpError::Unknown(err.to_string())),
+            Ok(_) => Ok(()),
+        }
     }
 
     /**
