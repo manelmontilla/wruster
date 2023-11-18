@@ -75,5 +75,5 @@ pub fn test_file_size(name: &str) -> Result<u64, io::Error> {
     file_path.push("tests/assets");
     file_path.push(name);
     let metadata = fs::metadata(&file_path).unwrap();
-    return Ok(metadata.len());
+    Ok(metadata.len())
 }
