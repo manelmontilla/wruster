@@ -3,7 +3,7 @@ Contains a set of helpful handlers, middlewares and utilities to create
 new handlers in a wruster web server.
 */
 use std::fs;
-use std::io::BufReader;
+use std::io::Read;
 use std::{io, path::PathBuf};
 
 #[macro_use]
@@ -68,7 +68,7 @@ pub fn serve_static(dir: &str, request: &Request) -> Response {
     };
     let mime_type = mime_guess::from_path(path).first_or_octet_stream();
     let mut headers = Headers::new();
-    let content = Box::new(BufReader::new(content));
+    let content: Box<dyn Read> = Box::new(content);
     headers.add(Header {
         name: String::from("Content-Length"),
         value: metadata.len().to_string(),

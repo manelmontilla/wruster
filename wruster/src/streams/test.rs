@@ -1,7 +1,7 @@
 use super::{
     cancellable_stream::CancellableStream,
     observable::ObservedStreamList,
-    test_utils::{get_free_port, TcpClient},
+    test_utils::{get_free_port, load_test_file, test_file_size, TcpClient},
     timeout_stream::TimeoutStream,
     tls::test_utils::*,
     *,
@@ -82,7 +82,7 @@ fn cancellable_stream_read_reads_data() {
 }
 
 #[test]
-fn cancellable_steeam_read_honors_timeout() {
+fn cancellable_stream_read_honors_timeout() {
     env_logger::init();
     let port = get_free_port();
     let addr = format!("127.0.0.1:{}", port);
@@ -108,32 +108,34 @@ fn cancellable_steeam_read_honors_timeout() {
 
 #[test]
 fn cancellable_stream_write_writes_data() {
-    let data = "test ";
     let port = get_free_port();
     let addr = format!("127.0.0.1:{}", port);
     let listener = TcpListener::bind(addr.clone()).unwrap();
-    let server_data = data.clone();
+    let mut server_data = load_test_file("big.png").unwrap();
     let handle = thread::spawn(move || {
         let (stream, _) = listener.accept().unwrap();
         let mut cstream = CancellableStream::new(stream).unwrap();
-        let data = server_data.as_bytes();
+        let mut data = Vec::new();
+        server_data.read_to_end(&mut data).unwrap();
         cstream.write(&data)
     });
 
     let mut client = TcpClient::connect(addr.to_string()).unwrap();
+    let mut reader = BufReader::new(&mut client);
+    let mut content = Vec::new();
+    let mut expected_file = load_test_file("big.png").unwrap();
+    let mut expected_data = Vec::new();
+    expected_file.read_to_end(&mut expected_data).unwrap();
+    let len = test_file_size("big.png").unwrap();
+    reader
+        .read_to_end(&mut content)
+        .expect("expect data to available");
+    assert_eq!(content, expected_data);
     let bytes_sent = handle
         .join()
         .unwrap()
         .expect("expected data to be written correctly");
-    assert_eq!(bytes_sent, data.len());
-
-    let mut reader = BufReader::new(&mut client);
-    let mut content = Vec::new();
-    reader
-        .read_until(b' ', &mut content)
-        .expect("expect data to available");
-    let content = String::from_utf8(content).expect("expect data to be valid");
-    assert_eq!(content, "test ".to_string());
+    assert_eq!(bytes_sent, len.try_into().unwrap());
 }
 
 #[test]
