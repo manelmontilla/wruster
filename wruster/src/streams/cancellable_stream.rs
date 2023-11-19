@@ -28,6 +28,7 @@ where
         let read_timeout = RwLock::new(None);
         let write_timeout = RwLock::new(None);
         let done = atomic::AtomicBool::new(false);
+        poller.add(stream.as_raw(), Event::all(1))?;
         Ok(CancellableStream {
             stream,
             done,
