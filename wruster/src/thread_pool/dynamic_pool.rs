@@ -152,15 +152,6 @@ impl Dynamic {
     }
 }
 
-impl Drop for Dynamic {
-    fn drop(&mut self) {
-        for worker in &*self.workers {
-            #[allow(clippy::drop_ref)]
-            drop(worker);
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -109,16 +109,6 @@ impl Static {
     }
 }
 
-impl Drop for Static {
-    fn drop(&mut self) {
-        let workers = &self.workers;
-        for worker in workers {
-            #[allow(clippy::drop_ref)]
-            drop(worker);
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
