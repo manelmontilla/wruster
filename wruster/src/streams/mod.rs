@@ -1,11 +1,12 @@
 /*!
 Contains various types that augment a type that can act as a [Stream], e.g.: a [std::net::TcpStream].
 */
-use polling::Source;
 use std::io::Read;
 use std::io::{self, Write};
 use std::net::{Shutdown, TcpStream};
 use std::time::Duration;
+
+use polling::Source;
 
 pub mod cancellable_stream;
 pub mod observable;

@@ -1,5 +1,3 @@
-use super::BaseStream;
-use polling::Event;
 use std::{
     io,
     net::Shutdown,
@@ -9,6 +7,10 @@ use std::{
     },
     time::Duration,
 };
+
+use polling::Event;
+
+use super::BaseStream;
 
 pub struct CancellableStream<T: BaseStream> {
     stream: T,

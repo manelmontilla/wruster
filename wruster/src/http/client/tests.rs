@@ -1,6 +1,6 @@
-use super::*;
 use std::net::{Ipv4Addr, SocketAddrV4, TcpListener};
 
+use super::*;
 use crate::http::Response;
 use crate::http::StatusCode;
 use crate::router;

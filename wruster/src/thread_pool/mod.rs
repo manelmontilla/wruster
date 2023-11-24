@@ -55,10 +55,11 @@ impl Pool {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use std::sync::mpsc::channel;
     use std::sync::Arc;
     use std::sync::Mutex;
+
+    use super::*;
 
     #[test]
     fn accepts_max_less_than_min() {

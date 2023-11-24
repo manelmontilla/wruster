@@ -59,15 +59,13 @@ use http::errors::HttpError;
 use http::*;
 use polling::{Event, Poller};
 use router::{Normalize, Router};
-
+pub use streams::tls::{Certificate, PrivateKey};
 use streams::{
     cancellable_stream::CancellableStream,
     observable::{ObservedStream, ObservedStreamList},
     timeout_stream::TimeoutStream,
     tls, Stream,
 };
-
-pub use streams::tls::{Certificate, PrivateKey};
 /// Contains all the types necessary for dealing with Http messages.
 pub mod http;
 /// Contains the router to be used in a [`Server`].

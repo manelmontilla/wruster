@@ -1,7 +1,7 @@
-use env_logger::Builder;
 use std::process;
 use std::str::FromStr;
 
+use env_logger::Builder;
 use log::LevelFilter;
 use wruster::http;
 use wruster::http::Response;
