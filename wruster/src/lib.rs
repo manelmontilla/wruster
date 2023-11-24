@@ -363,7 +363,6 @@ impl Server {
                     Err(err) => return Err(Box::new(err)),
                     Ok(connection) => connection,
                 };
-                stream.set_nonblocking(false).unwrap();
                 epoller.modify(&listener, Event::readable(1)).unwrap();
                 info!("accepting connection from {}", src_addr);
                 let cconfig = Arc::clone(&routes);
