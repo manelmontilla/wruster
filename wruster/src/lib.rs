@@ -45,7 +45,7 @@ fn main() {
 
 use std::error::Error as StdError;
 use std::io::{self, Error, ErrorKind};
-use std::net::{SocketAddr, TcpStream};
+use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -101,6 +101,7 @@ pub struct Timeouts {
 pub struct Server {
     stop: Arc<AtomicBool>,
     addr: Option<String>,
+
     handle: Option<JoinHandle<Result<(), Box<Error>>>>,
     poller: Option<Arc<Poller>>,
     timeouts: Timeouts,
@@ -299,8 +300,6 @@ impl Server {
         let poller = Arc::new(poller);
         let epoller = Arc::clone(&poller);
         self.poller = Some(poller);
-        let mut events = Vec::new();
-
         info!("listening on {}", &addr);
         let routes = Arc::new(routes);
         let execunits = match thread::available_parallelism() {
@@ -319,77 +318,97 @@ impl Server {
             }
         };
 
-        let mut pool = thread_pool::Pool::new(execunits, 100);
         let stop = Arc::clone(&self.stop);
         let timeouts = self.timeouts.clone();
-        let active_streams = ObservedStreamList::new();
+
         let handle = thread::spawn(move || {
-            loop {
-                debug!("tracked streams {}", active_streams.len());
-                events.clear();
-                epoller.wait(&mut events, None)?;
-                for evt in &events {
-                    if evt.key != 1 {
-                        continue;
-                    }
-                    let (stream, src_addr) = match listener.accept() {
-                        Err(err) => return Err(Box::new(err)),
-                        Ok(connection) => connection,
-                    };
-                    stream.set_nonblocking(false).unwrap();
-                    epoller.modify(&listener, Event::readable(1)).unwrap();
-                    info!("accepting connection from {}", src_addr);
-                    let cconfig = Arc::clone(&routes);
-                    let action_timeouts = timeouts.clone();
-
-                    let stream = stream_builder(stream);
-                    let action_stream = match stream {
-                        Ok(stream) => stream,
-                        Err(err) => {
-                            error!("error cloning stream: {}", err.to_string());
-                            continue;
-                        }
-                    };
-                    let action_stream = ObservedStreamList::track(&active_streams, action_stream);
-                    let local_action_stream = action_stream.clone();
-                    let action = move || {
-                        handle_conversation(
-                            action_stream,
-                            cconfig,
-                            action_timeouts.clone(),
-                            src_addr,
-                        );
-                    };
-
-                    if pool.run(Box::new(action)).is_err() {
-                        error!("server too busy to handle connection with: {}", src_addr);
-                        handle_busy(local_action_stream, timeouts.clone(), src_addr);
-                    }
-                }
-                if stop.as_ref().load(Ordering::SeqCst) {
-                    let pending = active_streams.drain();
-                    for p in pending {
-                        match p.upgrade() {
-                            Some(p) => {
-                                match p.shutdown(net::Shutdown::Both) {
-                                    Ok(()) => debug!("pending active connection closed"),
-                                    Err(err) => {
-                                        error!("error closing a pending active connection {}", err)
-                                    }
-                                };
-                            }
-                            None => debug!("pending active connection already dropped"),
-                        }
-                    }
-                    break;
-                };
-            }
-            info!("server stopped accepting connections");
-            Ok(())
+            Self::accept_connections(
+                timeouts,
+                stop,
+                listener,
+                execunits,
+                epoller,
+                routes,
+                stream_builder,
+            )
         });
 
         self.handle = Some(handle);
         self.addr = Some(String::from(addr));
+        Ok(())
+    }
+
+    fn accept_connections<F, T: Stream + Send + Sync + 'static>(
+        timeouts: Timeouts,
+        stop: Arc<AtomicBool>,
+        listener: TcpListener,
+        execunits: usize,
+        epoller: Arc<Poller>,
+        routes: Arc<Router>,
+        stream_builder: F,
+    ) -> Result<(), Box<Error>>
+    where
+        F: Fn(TcpStream) -> io::Result<CancellableStream<T>> + Send + 'static,
+    {
+        let mut events = Vec::new();
+        let mut pool = thread_pool::Pool::new(execunits, 100);
+        let active_streams = ObservedStreamList::new();
+        loop {
+            debug!("tracked streams {}", active_streams.len());
+            events.clear();
+            epoller.wait(&mut events, None)?;
+            for evt in &events {
+                if evt.key != 1 {
+                    continue;
+                }
+                let (stream, src_addr) = match listener.accept() {
+                    Err(err) => return Err(Box::new(err)),
+                    Ok(connection) => connection,
+                };
+                stream.set_nonblocking(false).unwrap();
+                epoller.modify(&listener, Event::readable(1)).unwrap();
+                info!("accepting connection from {}", src_addr);
+                let cconfig = Arc::clone(&routes);
+                let action_timeouts = timeouts.clone();
+
+                let stream = stream_builder(stream);
+                let action_stream = match stream {
+                    Ok(stream) => stream,
+                    Err(err) => {
+                        error!("error cloning stream: {}", err.to_string());
+                        continue;
+                    }
+                };
+                let action_stream = ObservedStreamList::track(&active_streams, action_stream);
+                let local_action_stream = action_stream.clone();
+                let action = move || {
+                    handle_conversation(action_stream, cconfig, action_timeouts.clone(), src_addr);
+                };
+
+                if pool.run(Box::new(action)).is_err() {
+                    error!("server too busy to handle connection with: {}", src_addr);
+                    handle_busy(local_action_stream, timeouts.clone(), src_addr);
+                }
+            }
+            if stop.as_ref().load(Ordering::SeqCst) {
+                let pending = active_streams.drain();
+                for p in pending {
+                    match p.upgrade() {
+                        Some(p) => {
+                            match p.shutdown(net::Shutdown::Both) {
+                                Ok(()) => debug!("pending active connection closed"),
+                                Err(err) => {
+                                    error!("error closing a pending active connection {}", err)
+                                }
+                            };
+                        }
+                        None => debug!("pending active connection already dropped"),
+                    }
+                }
+                break;
+            };
+        }
+        info!("server stopped accepting connections");
         Ok(())
     }
 
