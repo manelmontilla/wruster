@@ -10,11 +10,10 @@ use wruster::http::Response;
 use wruster::http::StatusCode;
 use wruster::router;
 use wruster::router::HttpHandler;
-use wruster::*;
-
 use wruster::test_utils::{
     get_free_port, load_test_certificate, load_test_private_key, TestTLSClient,
 };
+use wruster::*;
 
 #[test]
 fn server_closes_connection_when_timeout() {

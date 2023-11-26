@@ -1,11 +1,13 @@
-use atomic_refcell::AtomicRefCell;
 use std::path;
 use std::path::Component;
 use std::sync::Arc;
 
+use atomic_refcell::AtomicRefCell;
+
 mod trie;
-use crate::http::{HttpMethod, Request, Response};
 use trie::Trie;
+
+use crate::http::{HttpMethod, Request, Response};
 
 /// Defines a type alias for the Http Handlers associated with a [``Router`].
 pub type HttpHandler = Box<dyn Fn(&mut Request) -> Response + Send + Sync>;
@@ -145,10 +147,10 @@ impl Normalize for path::PathBuf {
 
 #[cfg(test)]
 mod tests {
-    use crate::http::{headers::Headers, Body};
     use std::{io::Cursor, path::PathBuf, str::FromStr};
 
     use super::*;
+    use crate::http::{headers::Headers, Body};
     #[test]
     fn normalizes_path() {
         // Returns error if the path is not absolute.

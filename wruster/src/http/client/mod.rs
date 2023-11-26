@@ -1,5 +1,4 @@
 #![allow(missing_docs)]
-use crate::http::*;
 use std::net::SocketAddr;
 use std::net::TcpStream;
 use std::net::ToSocketAddrs;
@@ -9,8 +8,10 @@ use std::sync::Mutex;
 use std::sync::{Arc, Weak};
 use std::time;
 
-use crate::streams::timeout_stream::TimeoutStream;
 use connection_pool::{Pool, PoolResource};
+
+use crate::http::*;
+use crate::streams::timeout_stream::TimeoutStream;
 
 mod connection_pool;
 

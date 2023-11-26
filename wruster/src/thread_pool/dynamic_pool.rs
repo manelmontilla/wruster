@@ -1,11 +1,13 @@
-use super::{Action, PoolError};
-use atomic_refcell::AtomicRefCell;
 use std::collections::VecDeque;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{sync_channel, RecvTimeoutError, SyncSender, TrySendError};
 use std::sync::{Arc, RwLock};
 use std::thread;
 use std::time::Duration;
+
+use atomic_refcell::AtomicRefCell;
+
+use super::{Action, PoolError};
 
 type DynamicWorkerFinished = Box<dyn FnOnce() + Send>;
 
@@ -154,10 +156,11 @@ impl Dynamic {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use std::sync::mpsc::channel;
     use std::sync::Arc;
     use std::sync::Mutex;
+
+    use super::*;
 
     #[test]
     fn returns_busy_error() {

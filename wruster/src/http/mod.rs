@@ -1,9 +1,8 @@
-use std::io::{self, BufReader, BufWriter};
-use std::io::{prelude::*, Cursor};
-
 use std::convert::Infallible;
 use std::fmt;
 use std::fmt::Debug;
+use std::io::{self, BufReader, BufWriter};
+use std::io::{prelude::*, Cursor};
 use std::str::FromStr;
 
 /// Contains the definition of the errors used in the Http module.
@@ -15,13 +14,12 @@ pub mod status;
 pub use self::status::StatusCode;
 
 mod version;
-pub use self::version::Version;
-
-use crate::errors::HttpError;
-use crate::errors::HttpError::{ConnectionClosed, InvalidRequest, Timeout, Unknown};
-
 use headers::*;
 use mime::Mime;
+
+pub use self::version::Version;
+use crate::errors::HttpError;
+use crate::errors::HttpError::{ConnectionClosed, InvalidRequest, Timeout, Unknown};
 
 /// Contains a HTTP client implementation.
 pub mod client;

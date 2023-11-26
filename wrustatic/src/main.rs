@@ -3,7 +3,6 @@ use std::process::exit;
 use std::time::Duration;
 
 use clap::{command, Parser};
-
 use wruster::http;
 use wruster::router;
 use wruster::router::HttpHandler;

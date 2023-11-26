@@ -1,4 +1,3 @@
-use super::{cancellable_stream::CancellableStream, timeout_stream::Timeout, Stream};
 use std::{
     collections::HashMap,
     io::{self, Read, Write},
@@ -8,6 +7,8 @@ use std::{
         Arc, RwLock, Weak,
     },
 };
+
+use super::{cancellable_stream::CancellableStream, timeout_stream::Timeout, Stream};
 
 /**
 Wraps a [CancellableStream] so it can be included in a [ObservedStreamList].

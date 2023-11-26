@@ -1,8 +1,9 @@
-use super::{Action, PoolError};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{sync_channel, SyncSender, TrySendError};
 use std::sync::Arc;
 use std::thread;
+
+use super::{Action, PoolError};
 
 struct Worker {
     id: usize,
@@ -111,10 +112,11 @@ impl Static {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use std::sync::mpsc::channel;
     use std::sync::Arc;
     use std::sync::Mutex;
+
+    use super::*;
 
     #[test]
     fn returns_busy_error() {

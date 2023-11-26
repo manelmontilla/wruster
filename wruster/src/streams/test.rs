@@ -1,13 +1,3 @@
-use super::{
-    cancellable_stream::CancellableStream,
-    observable::ObservedStreamList,
-    test_utils::{get_free_port, load_test_file, test_file_size, TcpClient},
-    timeout_stream::TimeoutStream,
-    tls::test_utils::*,
-    *,
-};
-
-use crate::test_utils::TestTLSClient;
 use std::{
     io::{BufRead, BufReader, ErrorKind, Read, Write},
     net::{Shutdown, TcpListener},
@@ -19,6 +9,16 @@ use std::{
     thread,
     time::Duration,
 };
+
+use super::{
+    cancellable_stream::CancellableStream,
+    observable::ObservedStreamList,
+    test_utils::{get_free_port, load_test_file, test_file_size, TcpClient},
+    timeout_stream::TimeoutStream,
+    tls::test_utils::*,
+    *,
+};
+use crate::test_utils::TestTLSClient;
 
 #[test]
 fn cancellable_stream_shutdown_stops_reading() {
