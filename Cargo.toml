@@ -1,8 +1,5 @@
 [workspace]
 
-members = [
-"wruster",
-"wrustatic",
-"wruster_handlers",
-"wrusdummy"
-]
+resolver = "2"
+
+members = ["wruster", "wrustatic", "wruster_handlers", "wrusdummy"]
