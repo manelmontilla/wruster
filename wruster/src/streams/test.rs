@@ -61,6 +61,30 @@ fn cancellable_stream_shutdown_stops_reading() {
 }
 
 #[test]
+fn cancellable_stream_read_stops_connection_close() {
+    let port = get_free_port();
+    let addr = format!("127.0.0.1:{}", port);
+    let listener = TcpListener::bind(addr.clone()).unwrap();
+    let handle = thread::spawn(move || {
+        let (stream, _) = listener.accept().unwrap();
+        let mut cstream = CancellableStream::new(stream).unwrap();
+        cstream
+            .set_read_timeout(Some(Duration::from_secs(2)))
+            .unwrap();
+        let mut reader = BufReader::new(&mut cstream);
+        let mut content = Vec::new();
+        reader
+            .read_until(b' ', &mut content)
+            .expect_err("connetion close");
+    });
+
+    let mut client = TcpClient::connect(addr.to_string()).unwrap();
+    thread::sleep(Duration::from_secs(1));
+    client.close().unwrap();
+    handle.join().unwrap();
+}
+
+#[test]
 fn cancellable_stream_read_reads_data() {
     let port = get_free_port();
     let addr = format!("127.0.0.1:{}", port);
