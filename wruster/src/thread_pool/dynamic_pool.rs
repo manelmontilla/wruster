@@ -178,7 +178,7 @@ mod tests {
         started_rcv.recv().unwrap();
         // Try to run another action.
         pool.run(Box::new(action2)).expect_err("expected error");
-        // Sginal the first thread to finish.
+        // Signal the first thread to finish.
         sender.send(()).unwrap();
     }
 

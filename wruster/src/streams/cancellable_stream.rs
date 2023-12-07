@@ -82,19 +82,26 @@ where
             let read_buf = &mut buf[bytes_read..];
             let s = &self.stream;
 
-            match s.read_buf(read_buf) {
+            let result = match s.read_buf(read_buf) {
                 Ok(0) if self.done.load(Ordering::SeqCst) => {
-                    return Err(io::Error::from(io::ErrorKind::NotConnected));
+                    Err(io::Error::from(io::ErrorKind::NotConnected))
                 }
+                Ok(n) => Ok(n),
+                Err(err) => Err(err),
+            };
+            match result {
                 Ok(n) => {
                     bytes_read += n;
                 }
-                Err(err) if err.kind() == io::ErrorKind::WouldBlock => {}
-                Err(err) => {
-                    return Err(err);
+                Err(err) if err.kind() == io::ErrorKind::WouldBlock => {
+                    // If we are unable to read anything we signal the reader
+                    // that is safe to retry the operation by returning and
+                    // error of kind: Interrupted. Reference:
+                    // https://doc.rust-lang.org/std/io/trait.Read.html#errors.
+                    return Err(io::Error::from(io::ErrorKind::Interrupted));
                 }
+                Err(err) => return Err(err),
             };
-
             // TODO: Actually this is not correct, we should read all the
             // events returned by wait, even if we end up reading more bytes
             // than the len of the buffer provide by the caller.
@@ -102,11 +109,9 @@ where
                 break;
             }
         }
-        // If we were unable to read anything we signal the reader that is safe to retry
-        // the operation by returning and error of kind :Interrupted.
-        // Reference: https://doc.rust-lang.org/std/io/trait.Read.html#errors.
+
         if bytes_read == 0 {
-            return Err(io::Error::from(io::ErrorKind::Interrupted));
+            return Err(io::Error::from(io::ErrorKind::ConnectionReset));
         }
         Ok(bytes_read)
     }
