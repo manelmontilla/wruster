@@ -1,13 +1,10 @@
 [package]
 name = "wruster_handlers"
-version = "0.1.0"
+version = "0.0.10"
 edition = "2021"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
-
-wruster = { path ="../wruster"}
+wruster = { path = "../wruster" }
 mime_guess = "2.0.3"
 log = "0.4.14"
 env_logger = "0.8.4"

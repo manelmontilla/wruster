@@ -1,14 +1,11 @@
 [package]
 name = "wrustatic"
-version = "0.1.0"
+version = "0.0.10"
 edition = "2021"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
-
-wruster = { path ="../wruster"}
-wruster_handlers = { path ="../wruster_handlers"}
+wruster = { path = "../wruster" }
+wruster_handlers = { path = "../wruster_handlers" }
 log = "0.4.14"
 env_logger = "0.8.4"
 rustls = "0.20.6"
