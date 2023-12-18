@@ -1,5 +1,5 @@
 /*!
-Contains various types that augment a type that can act as a [Stream], e.g.: a [std::net::TcpStream].
+Contains various types that augment a [Stream], e.g.: a [std::net::TcpStream].
 */
 use std::io::Read;
 use std::io::{self, Write};

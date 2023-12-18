@@ -107,7 +107,7 @@ impl Headers {
     pub fn add(&mut self, header: Header) {
         let name = header.name;
         let content = header.value;
-        let values = self.headers.entry(name).or_insert_with(Vec::new);
+        let values = self.headers.entry(name).or_default();
         values.push(content);
     }
 
