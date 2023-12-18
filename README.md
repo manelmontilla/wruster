@@ -7,24 +7,18 @@ components at the HTTP protocol level.
 
 ## Objectives
 
-- Allow to experiment with different strategies for managing I/O: thread per
-connection, thread per request, etc..
+- Have fun and learn
 
 - Include the minimum necessary components to write relatively ``low level`` web
-backend machinery, think about: reverse proxies, static content servers or
-HTTP Load balancers.
-
-- The performance will only be considered at the amortized time complexity
-level, beyond that, it's not an objective to improve the performance of the
-different components of the server.
+backend machinery.
 
 ## Status
 
-The project is still in alfa, the public API is particularly in very
-early stages and lacks access to many configuration options of some of
-the components. That's also true for the documentation, that covers only the
-basics for running a ``server`` and executing handlers but not a fine grain
-configuration of the behavior of the Server.
+The project is in alfa, the public API is particularly in early stages and lacks
+access to many configuration options of some of the components. That's also true
+for the documentation, that covers only the basics for running a ``server`` and
+executing handlers but not a fine grain configuration of the behavior of the
+Server.
 
 ## Example
 
@@ -101,11 +95,11 @@ defined in the routes.
 The current implementation allows defining a ``minimum`` and a ``maximum``
 number of threads. The minimum defines the number of threads that are allocated
 when the pool is created. The maximum defines how many extra threads can be
-allocated dynamically when the initial created threads are busy.
+allocated dynamically when the initial created ones are busy.
 
 ### Server
 
-Accepts TCP connections listening in a given address and executes the actions
+Accepts TCP connections listening in a given address, and executes the actions
 defined in a set of routes by using a thread pool and a router.
 
 The current implementation of the server uses a thread per connection strategy
