@@ -13,7 +13,7 @@ pub struct TcpClient {
 impl TcpClient {
     #[allow(dead_code)]
     pub fn connect(addr: String) -> Result<Self, Box<dyn Error>> {
-        let stream = TcpStream::connect(&addr)?;
+        let stream = TcpStream::connect(addr)?;
         let stream = Some(stream);
         Ok(TcpClient { stream })
     }
@@ -66,7 +66,7 @@ pub fn load_test_file(name: &str) -> Result<File, io::Error> {
     file_path.push("tests/assets");
     file_path.push(name);
     let file = fs::File::open(&file_path).unwrap();
-    return Ok(file);
+    Ok(file)
 }
 
 #[allow(dead_code)]
