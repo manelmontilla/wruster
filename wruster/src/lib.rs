@@ -81,9 +81,9 @@ mod thread_pool;
 pub const DEFAULT_READ_REQUEST_TIMEOUT: time::Duration = time::Duration::from_secs(30);
 
 /// Defines the default max time for a response to be written
-pub const DEFAULT_WRITE_RESPONSE_TIMEOUT: time::Duration = time::Duration::from_secs(30);
+pub const DEFAULT_WRITE_RESPONSE_TIMEOUT: time::Duration = time::Duration::from_secs(60);
 
-/// Defines the result type returned from the [Server] methods.
+/// Defines the result type returned from the [``Server``] methods.
 pub type ServerResult = Result<(), Box<dyn StdError>>;
 
 /// Defines the timeouts used in [Server::from_timeouts] method.
@@ -95,7 +95,7 @@ pub struct Timeouts {
     pub write_response_timeout: time::Duration,
 }
 
-/// Represents a web server that can be run by passing a [router::Router].
+/// Represents a web server that can be run by passing a [`router::Router`].
 pub struct Server {
     stop: Arc<AtomicBool>,
     addr: Option<String>,
