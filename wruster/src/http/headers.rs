@@ -179,7 +179,11 @@ impl Headers {
                 header.write(to)?
             }
         }
-        to.write_all("\r\n".as_bytes()).map_err(HttpError::from)?;
+
+        let written = to.write_all("\r\n".as_bytes());
+        if let Err(err) = written {
+            return Err(HttpError::Unknown(err.to_string()));
+        };
         Ok(())
     }
 }

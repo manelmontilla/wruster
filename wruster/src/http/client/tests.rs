@@ -5,7 +5,7 @@ use crate::http::Response;
 use crate::http::StatusCode;
 use crate::router;
 use crate::router::HttpHandler;
-use crate::*;
+use crate::Server;
 
 #[test]
 fn client_write_run_post_body() {
@@ -17,13 +17,13 @@ fn client_write_run_post_body() {
     let request = Request::from_body(body, HttpMethod::POST, "/");
     let response = c.run(&addr, request).expect("Error running request");
 
-    assert_eq!(response.status, http::StatusCode::OK);
+    assert_eq!(response.status, StatusCode::OK);
 
     server.shutdown().expect("Error shutting down server");
 }
 
 #[test]
-fn client_keep_alive_reuses_connection() {
+fn client_keeps_connection_alive() {
     let handler = handler_from_check_body(|content| String::from_utf8_lossy(&content) == "test");
     let (server, addr) = run_server(handler, HttpMethod::POST, "/");
 
@@ -31,7 +31,7 @@ fn client_keep_alive_reuses_connection() {
     let body = Body::from("test", mime::TEXT_PLAIN);
     let request = Request::from_body(body, HttpMethod::POST, "/");
     let response = c.run(&addr, request).expect("Error running request");
-    assert_eq!(response.status, http::StatusCode::OK);
+    assert_eq!(response.status, StatusCode::OK);
 
     // Release the connection.
     drop(response);
@@ -54,7 +54,7 @@ fn client_keep_alive_reuses_connection() {
     assert_eq!(dont_exist, true);
     drop(connection_pool);
 
-    assert_eq!(response.status, http::StatusCode::OK);
+    assert_eq!(response.status, StatusCode::OK);
     drop(response);
 
     // Check the connection is in the connection pool again.

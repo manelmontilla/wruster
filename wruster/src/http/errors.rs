@@ -10,11 +10,11 @@ pub enum HttpError {
     /// parsing a Request or a Response. Additional info about the error is
     /// stored in the inner String of the variant.
     Unknown(String),
-    /// It's generated when the connection is closed while reading o writing
+    /// It's generated when the connection is closed while waiting to star
     /// reading a request.
     ConnectionClosed,
-    /// It's generated when the maximum allowed time to read/write a request or
-    /// response has been exceed.
+    /// It's generated when the maximun allowed time to read a request or
+    /// write a response has been exceed.
     Timeout,
     /// It's generated when a syntactic error is found while reading a request.
     InvalidRequest(String),

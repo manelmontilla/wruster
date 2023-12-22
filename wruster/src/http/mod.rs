@@ -14,10 +14,11 @@ pub mod status;
 pub use self::status::StatusCode;
 
 mod version;
+pub use self::version::Version;
+
 use headers::*;
 use mime::Mime;
 
-pub use self::version::Version;
 use crate::errors::HttpError;
 use crate::errors::HttpError::{ConnectionClosed, InvalidRequest, Timeout, Unknown};
 
