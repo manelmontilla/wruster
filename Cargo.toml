@@ -2,4 +2,4 @@
 
 resolver = "2"
 
-members = ["wruster", "wrustatic", "wruster_handlers", "wrusdummy"]
+members = ["wruster", "wrustatic", "wruster_handlers", "wrusdummy", "wrusrun"]

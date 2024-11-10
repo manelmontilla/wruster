@@ -17,7 +17,5 @@ servers:
         emails:
             - one@example.com
             - other@example.com
-     
-
 
 ```
